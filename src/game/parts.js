@@ -5,7 +5,7 @@
 // notes. A pitch that sits inside one lane sends all its notes there. A pitch that crosses lanes shares its
 // notes between them in proportion to its width in each, in time order, so the notes alternate between
 // neighbouring feet instead of hammering one.
-export const LANES_PER_SEAT = 2;
+export const LANES_PER_SEAT = 1; // one lane for each seat, so four seats make four lanes at most
 const EPS = 1e-9; // widths are floats, so a pitch that ends exactly on a lane edge must not leak into the next lane
 
 // Returns `seats` songs, each the same song with only the notes of that seat's two lanes. Each note carries

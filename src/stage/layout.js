@@ -1,7 +1,7 @@
 // Seats on the field, with no browser calls. Rules are in PLAN.md under "Seats and session" and "Wave 3b".
 // Field coordinates: u 0 (left) to 1 (right), v 0 (far edge) to 1 (the players' edge).
 export const MAX_SEATS = 4;
-export const LANES = 2; // every pad has two lanes, one for each foot
+export const LANES = 1; // every seat is one lane, so four seats make four lanes at most
 const EDGE = 0.04; // empty space at the left and right of the field
 const GAP = 0.04; // between two pads
 const TOP = 0.1;

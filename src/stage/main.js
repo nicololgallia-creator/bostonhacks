@@ -9,6 +9,7 @@ import { createTrackedFeet } from "../track/tracked.js";
 import { HIT_V, TRAVEL_MS } from "../game/engine.js";
 import { createSynth } from "../game/synth.js";
 import { createRenderer } from "../game/render.js";
+import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
 import { openLink } from "../link.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
@@ -43,7 +44,8 @@ function saved(key) {
 // The train comes from the address (the poster's QR code leads here), else from the last one saved, else the default.
 const session = createSession({ songs, layout: saved(LAYOUT_KEY), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
 const synth = createSynth();
-const draw = createRenderer(canvas);
+// The falling-tiles floor is the look. ?look=pads brings back the pad for each seat.
+const draw = (params.get("look") === "pads" ? createRenderer : createTileRenderer)(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
 let appliedVolume = null;
 const ringing = new Map(); // "spotId:lane" -> the function that stops that held note
