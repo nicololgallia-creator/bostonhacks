@@ -4,7 +4,7 @@ import { makeLayout, feetBySpot, asLayout, LANES } from "./layout.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-3, `${a} is not near ${b}`);
 
-test("every pad has 2 lanes, one for each foot", () => {
+test("a stored layout has 2 lanes, a lone player's pad (the session sets the lanes in the State from the seats taken)", () => {
   assert.equal(LANES, 2);
   for (const seats of [1, 2, 3, 4]) assert.equal(makeLayout({ seats }).lanes, 2);
   assert.equal("posture" in makeLayout({ seats: 2 }), false);

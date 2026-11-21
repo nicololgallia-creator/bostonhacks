@@ -1,7 +1,9 @@
 // Seats on the field, with no browser calls. Rules are in PLAN.md under "Seats and session" and "Wave 3b".
 // Field coordinates: u 0 (left) to 1 (right), v 0 (far edge) to 1 (the players' edge).
 export const MAX_SEATS = 4;
-export const LANES = 2; // every pad has two lanes, one for each foot
+// A stored layout always has 2 lanes (a lone player's pad). The State's layout.lanes is set by the session from the
+// seats taken (lanesInPad in game/parts.js): 2 for none or one seat, 1 for two or more.
+export const LANES = 2;
 const EDGE = 0.04; // empty space at the left and right of the field
 const GAP = 0.04; // between two pads
 const TOP = 0.1;

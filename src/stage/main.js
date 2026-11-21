@@ -1,11 +1,12 @@
 // The projected game. Phones join, pick seats and start songs over the link; this page is the one
 // source of truth (session.js), draws the floor and plays the sound.
 // Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate).
-// URL options: ?feet=mouse (the default; the whole picture is the field) or ?feet=camera (feet from the camera, after setup),
+// URL options: ?feet=mouse (the default; the whole picture is the field) ?feet=camera (feet from the camera, after setup) or ?feet=seats (seated play: tap in place, one slice of the picture for each seat),
 // ?demo=1 (a guest in every seat, Space starts the songs), ?autostart=1 (with demo, starts at once).
 import { create as createQr } from "qrcode";
 import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
+import { createSeatSource, glowFeet } from "../track/seatsource.js";
 import { HIT_V, TRAVEL_MS } from "../game/engine.js";
 import { createSynth } from "../game/synth.js";
 import { createRenderer } from "../game/render.js";
@@ -29,10 +30,16 @@ document.getElementById("app").append(canvas);
 applyKeystone(canvas); // the saved corners from setup straighten the picture on the floor
 
 // The one place that picks where feet come from.
-const feetSources = { mouse: () => mouseFeet(canvas), camera: () => createTrackedFeet() };
+// ?feet=seats is seated play: one pose for each seat, tapping in place. ?src=<video url> plays a recording instead of the camera,
+// ?model=lite|full and ?perframe=N (how many seats run on each camera frame) tune its speed.
+const feetSources = {
+  mouse: () => mouseFeet(canvas),
+  camera: () => createTrackedFeet(),
+  seats: () => createSeatSource({ layout: snap.layout, src: params.get("src"), model: params.get("model") ?? "lite", perFrame: +params.get("perframe") || Infinity }),
+};
 function pickFeetSource() {
   const name = params.get("feet") ?? "mouse";
-  if (!feetSources[name]) throw new Error(`There is no feet source called "${name}". Use ?feet=mouse or ?feet=camera.`);
+  if (!feetSources[name]) throw new Error(`There is no feet source called "${name}". Use ?feet=mouse, ?feet=camera or ?feet=seats.`);
   return feetSources[name]();
 }
 
@@ -158,11 +165,16 @@ const shifted = (tiles) => tiles.map((t) => ({ ...t, v: t.v + shift(), vTail: t.
 
 const feetSource = (() => { try { return pickFeetSource(); } catch (err) { return err; } })();
 
+let padLanes = {}; // how many lanes each pad had on the last frame, for a seated source
 function frame() {
   const now = clock();
-  const fieldFeet = feetSource.read();
-  const byPad = feetBySpot(snap.layout, fieldFeet);
+  // A seated source already gives each seat's feet in pad coordinates; the others give field feet that are sorted into pads.
+  const seated = !!feetSource.bySpot;
+  const read = seated ? null : feetSource.read();
+  const byPad = seated ? feetSource.bySpot(padLanes) : feetBySpot(snap.layout, read);
+  const fieldFeet = seated ? glowFeet(snap.layout, byPad) : read;
   const view = session.tick(now, byPad);
+  padLanes = Object.fromEntries(view.pads.map((p) => [p.spotId, p.lanes])); // a lone player has 2 lanes, one for each foot; with more players each has 1
   snap = session.snapshot(now);
   const events = session.drain();
   playSounds(events);
@@ -171,7 +183,7 @@ function frame() {
   draw({
     status: view.status,
     layout: snap.layout,
-    pads: view.pads.map((p) => ({ ...p, tiles: shifted(p.tiles), feet: byPad[p.spotId] ?? [] })),
+    pads: view.pads.map((p) => ({ ...p, tiles: shifted(p.tiles), feet: (byPad[p.spotId] ?? []).filter((f) => !f.lifted) })), // a foot in the air does not light its lane
     players: snap.players,
     songMs: view.songMs,
     song: view.song,
@@ -208,7 +220,8 @@ if (feetSource instanceof Error) {
   document.getElementById("app").innerHTML = `<p class="error">${feetSource.message}</p>`;
 } else {
   // A camera that will not start opens setup, whose first step says why. Any other failure stops the stage.
-  feetSource.start().catch((err) => { if (!feetSource.ready) throw err; setup(); }).then(() => {
+  // Only a source with a picture to line up (the camera map) opens setup; a seated source's reason is shown on the stage.
+  feetSource.start().catch((err) => { if (!feetSource.raw) throw err; setup(); }).then(() => {
     tellReady();
     if (demo) {
       snap.layout.spots.forEach((spot) => {

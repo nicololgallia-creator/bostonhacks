@@ -2,7 +2,7 @@
 // Rules are in PLAN.md under "Seats and session" and "Wave 3b". A phone holds one or more seats; one engine
 // runs for each taken seat, and every seat plays its share of the song at the same time.
 import { createGame, gradeFor, songSeconds, TRAVEL_MS } from "../game/engine.js";
-import { splitParts } from "../game/parts.js";
+import { splitParts, lanesInPad } from "../game/parts.js";
 import { makeLayout, asLayout, MAX_SEATS } from "./layout.js";
 
 export const COUNTDOWN_MS = 3000;
@@ -78,6 +78,9 @@ export function createSession({ songs, layout, train } = {}) {
   let queue = []; // songs still to come
   let transit = null;
   let engines = new Map(); // spotId -> { game, tiles, stats, done, bonus, bonusFor }
+  let songLanes = 2; // lanes in a pad for the song loaded now
+  // The lanes in a pad: the song's own while one is loaded, else what the seats taken in the lobby will get.
+  const padLanes = () => (status === "lobby" ? lanesInPad(owner.size) : songLanes);
   // Song time is nowMs - origin: 0 is when the first beat is due at the hit line. A song starts
   // COUNTDOWN_MS + TRAVEL_MS before that, so the countdown runs first and then the tiles slide in.
   let origin = 0;
@@ -144,10 +147,12 @@ export function createSession({ songs, layout, train } = {}) {
     const seated = [...owner.keys()].sort((a, b) => a - b);
     if (!song || !seated.length) return toLobby();
     current = song;
-    // The taken seats, in seat order, are one keyboard: each plays its own two lanes of the song, all at once.
+    // The taken seats, in seat order, are one keyboard: each plays its own lanes of the song, all at once.
+    // The lanes in a pad are fixed for the song: a seat released part way does not change them.
     const parts = splitParts(song, seated.length);
+    songLanes = lanesInPad(seated.length);
     engines = new Map(seated.map((spotId, i) => {
-      const game = createGame({ song: parts[i], lanes: lay.lanes });
+      const game = createGame({ song: parts[i], lanes: songLanes });
       return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false, bonus: 0, bonusFor: null }];
     }));
     // The stage's clock runs offsetMs behind the wall clock. A new lag takes over here, and the origin
@@ -295,7 +300,7 @@ export function createSession({ songs, layout, train } = {}) {
         type: "state",
         status,
         notice: notice && nowMs - noticeAt < NOTICE_MS ? notice : null,
-        layout: lay,
+        layout: { ...lay, lanes: padLanes() },
         train: where,
         // One entry for each taken seat, in seat order. A phone that holds several seats appears in each.
         // The seat's total for the song is score + bonus.

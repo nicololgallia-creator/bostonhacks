@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 380" role="img" aria-label="The conductor: a jellyfish in a conductor cap whose tentacles are the four subway lines">
+  <!-- The conductor. Designed by the lead on a Claude Design canvas, picked by Nicolo on Sat 21 Nov 2026:
+       the subway-line tentacles of direction A on the marker body of direction B.
+       Groups are named so the app can move them: #tentacles, #arm-wave, #arm-ticket, #body, #face, #cap. -->
+  <g id="tentacles">
+    <g fill="none" stroke="#141413" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M100 196 V250 L80 270 V330"/>
+      <path d="M140 196 V292 L125 307 V350"/>
+      <path d="M180 196 V292 L195 307 V350"/>
+      <path d="M220 196 V250 L240 270 V330"/>
+    </g>
+    <g fill="none" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M100 196 V250 L80 270 V330" stroke="#DA291C"/>
+      <path d="M140 196 V292 L125 307 V350" stroke="#ED8B00"/>
+      <path d="M180 196 V292 L195 307 V350" stroke="#003DA5"/>
+      <path d="M220 196 V250 L240 270 V330" stroke="#00843D"/>
+    </g>
+    <g fill="#FFFFFF" stroke="#141413" stroke-width="5">
+      <circle cx="80" cy="330" r="10"/>
+      <circle cx="125" cy="350" r="10"/>
+      <circle cx="195" cy="350" r="10"/>
+      <circle cx="240" cy="330" r="10"/>
+    </g>
+  </g>
+  <path id="arm-wave" d="M70 172 C40 162 28 132 38 106" fill="none" stroke="#141413" stroke-width="9" stroke-linecap="round"/>
+  <g id="arm-ticket">
+    <path d="M250 174 C276 178 288 196 284 212" fill="none" stroke="#141413" stroke-width="9" stroke-linecap="round"/>
+    <g transform="rotate(-12 286 226)">
+      <rect x="266" y="212" width="40" height="26" rx="5" fill="#FFD43B" stroke="#141413" stroke-width="6"/>
+    </g>
+  </g>
+  <path id="body" d="M60 190 C60 112 108 72 160 72 C212 72 260 112 260 190 C260 206 250 212 238 205 C226 198 214 198 204 206 C192 215 178 215 168 206 C158 198 146 198 136 206 C124 215 110 215 100 206 C90 198 78 200 70 206 C62 211 60 203 60 190 Z" fill="#FFFFFF" stroke="#141413" stroke-width="9" stroke-linejoin="round"/>
+  <g id="face">
+    <circle cx="130" cy="150" r="8" fill="#141413"/>
+    <circle cx="190" cy="150" r="8" fill="#141413"/>
+    <path d="M148 168 Q160 178 172 168" fill="none" stroke="#141413" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <g id="cap">
+    <path d="M100 90 L106 48 C106 38 214 38 214 48 L220 90 Z" fill="#1F2A5C" stroke="#141413" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M102 74 H218 L220 90 H100 Z" fill="#FFD43B" stroke="#141413" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M90 90 C120 108 200 108 230 90 Z" fill="#141413" stroke="#141413" stroke-width="7" stroke-linejoin="round"/>
+    <circle cx="160" cy="58" r="9" fill="#FFD43B" stroke="#141413" stroke-width="5"/>
+  </g>
+</svg>
