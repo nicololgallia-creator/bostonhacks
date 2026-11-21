@@ -3,10 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B0D12">
 <title>Platform Piano</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='12' width='5' height='18' rx='2' fill='%2329D6FF'/%3E%3Crect x='9' y='4' width='5' height='26' rx='2' fill='%23FF4FA3'/%3E%3Crect x='16' y='9' width='5' height='21' rx='2' fill='%23FFD43B'/%3E%3Crect x='23' y='15' width='5' height='15' rx='2' fill='%237CFF6B'/%3E%3C/svg%3E">
 </head>
 <body>
-<div id="app"></div>
+<div class="app" id="app">
+  <header class="top">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect class="m1" x="2" y="12" width="5" height="18" rx="2"/>
+      <rect class="m2" x="9" y="4" width="5" height="26" rx="2"/>
+      <rect class="m3" x="16" y="9" width="5" height="21" rx="2"/>
+      <rect class="m4" x="23" y="15" width="5" height="15" rx="2"/>
+    </svg>
+    <span class="wordmark">Platform Piano</span>
+  </header>
+  <div class="status" id="status"><div class="status-in"><p role="status"></p></div></div>
+  <main class="screen" id="screen"></main>
+</div>
 <script type="module" src="/src/phone/main.js"></script>
 </body>
 </html>

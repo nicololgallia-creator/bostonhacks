@@ -1,0 +1,89 @@
+/* Platform Piano design tokens. One theme, dark, on purpose: this is used underground and
+   beside a dim projector, where a bright phone is the one thing that hurts. Every value is
+   explained in DESIGN.md. Change a value here and nowhere else. */
+
+/* One family, self-hosted: the laptop's Wi-Fi may have no internet. Bricolage Grotesque,
+   SIL Open Font License 1.1, Mathieu Triay, from Google Fonts. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("./phone/fonts/bricolage-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("./phone/fonts/bricolage-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest. Steps are small on purpose; a step up is "raised". */
+  --bg: #0B0D12;
+  --surface-1: #12151C;
+  --surface-2: #1A1E27;
+  --surface-3: #252A36;
+
+  /* Text. Contrast against --surface-2 in brackets. */
+  --text: #F4F5F8;      /* 15.3 */
+  --text-2: #A9AFBE;    /* 7.6 */
+  --text-3: #8A91A3;    /* 5.3, placeholders and hints only */
+  --ink: #0B0D12;       /* text on any bright fill below */
+
+  /* The one action colour is off-white, so colour stays free to mean a seat. */
+  --action: #F4F5F8;
+  --action-hover: #DDE0E8;
+  --action-press: #C9CDD8;
+  --warn: #FF9F6B;      /* something is wrong and has a fix */
+
+  /* Seat colours, fixed. The floor draws the same four. Each has a dim fill for a free
+     pad and a soft tone for a numeral on a taken pad (3.4:1 or better on --surface-2). */
+  --seat-1: #29D6FF;  --seat-1-dim: #113541;  --seat-1-soft: #22A4C4;
+  --seat-2: #FF4FA3;  --seat-2-dim: #3C1A2F;  --seat-2-soft: #C23F7F;
+  --seat-3: #FFD43B;  --seat-3-dim: #3C351A;  --seat-3-soft: #C2A231;
+  --seat-4: #7CFF6B;  --seat-4-dim: #223D24;  --seat-4-soft: #60C355;
+
+  /* Type. One family. A fixed scale, because a tool is read at one distance. */
+  --font: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --text-xs: 0.8125rem;   /* 13 */
+  --text-sm: 0.9375rem;   /* 15 */
+  --text-md: 1.0625rem;   /* 17, body and buttons */
+  --text-lg: 1.375rem;    /* 22 */
+  --text-xl: 1.75rem;     /* 28, the name field */
+  --text-2xl: 2.5rem;     /* 40, one heading a screen */
+  --text-num: 4.5rem;     /* 72, a seat number */
+
+  /* Space, in fours. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 3rem;
+  --space-9: 4rem;
+
+  /* Corners. Controls are 14, a pad is 20, nothing is a pill. */
+  --radius-s: 0.5rem;
+  --radius-m: 0.875rem;
+  --radius-l: 1.25rem;
+
+  /* Shadows have an offset and a soft blur. They are barely visible on dark, so they only
+     lift the one primary button. */
+  --shadow-raise: 0 10px 24px -10px rgb(0 0 0 / 0.7), 0 2px 4px rgb(0 0 0 / 0.35);
+
+  /* Motion: short, exponential ease-out, never plain "ease". */
+  --dur-1: 120ms;   /* press and release */
+  --dur-2: 220ms;   /* something appears or changes */
+  --dur-3: 420ms;   /* a pad lights up */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
