@@ -21,6 +21,7 @@ import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
 import { CAMERA_KEY } from "../track/seatsource.js";
 import { moveBound } from "../track/slices.js";
+import { isFacing, setFacing, turned } from "../facing.js";
 import { applyKeystone, loadCalibration, matrix3dFor, saveCalibration } from "./keystone.js";
 import { feetBySpot, asLayout, makeLayout, MAX_SEATS } from "./layout.js";
 import { createArrivals, measureLag } from "./lag.js";
@@ -324,6 +325,17 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     ctx.meta("If they look stretched, drag a corner until they look square. The arrow keys nudge the last corner you touched.");
     ctx.next(true);
 
+    // The projector and camera stand across from the players: the picture turns half way round and the seats mirror with it.
+    const faceBtn = button("The projector faces the players", "", () => {
+      setFacing(!isFacing());
+      mark();
+      applyKeystone(field);
+      feet?.setLayout?.(current); // the seat source cuts its slices again, now in the other order
+    });
+    const mark = () => { faceBtn.classList.toggle("is-on", isFacing()); faceBtn.setAttribute("aria-pressed", isFacing()); };
+    mark();
+    controls.append(faceBtn, el("p", "setup-note", "Turns the picture half way round and mirrors the seats."));
+
     let last = null;
     const handles = CORNERS.map((name, i) => {
       const h = el("button", "setup-handle", String(i + 1));
@@ -511,7 +523,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
 
   // Where a pointer is on the field, 0 to 1 each way, undoing the keystone exactly.
   function fieldAt(e) {
-    const corners = loadCalibration().corners.map((c) => ({ x: c.x * innerWidth, y: c.y * innerHeight }));
+    const corners = turned(loadCalibration().corners).map((c) => ({ x: c.x * innerWidth, y: c.y * innerHeight })); // the picture is turned half way round when the projector faces the players
     return apply(solve(corners, UNIT), { x: e.clientX, y: e.clientY });
   }
 
@@ -669,7 +681,30 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     let bounds = [first[0].x0, ...first.map((x) => x.x1)];
     const fixed = feet.kind === "replay"; // a recording brings its own slices
     const hint = fixed ? "" : "Arrow keys nudge the last line you touched. Shift moves it further.";
-    ctx.say(fixed ? "This is a recording, so its lines are fixed. Check that every seat finds a person." : "Drag the lines so each player sits in their own slice.");
+    ctx.say(fixed ? "This is a recording, so its lines are fixed. Check that every seat finds a person." : "Press Fit to the people, or drag the lines so each player sits in their own slice.");
+    let note = ""; // a line under the picture about the last fit, or about following
+    let alive = true;
+
+    // Fit to the people: finds everyone in the picture once and puts each player in their own slice. Following keeps them there.
+    const fitBtn = fixed ? null : button("Fit to the people", "is-primary", () => runFit());
+    const followBtn = fixed ? null : button("Follow people", "", () => { feet.setFollow(!feet.following()); note = ""; });
+    const runFit = async () => {
+      fitBtn.disabled = true;
+      fitBtn.textContent = "Finding people...";
+      ctx.error("");
+      try {
+        const r = await feet.fit();
+        if (!alive) return;
+        note = r.found === 0 ? "" : r.found >= first.length ? `Found all ${first.length} people in ${(r.ms / 1000).toFixed(1)} s.` : `Found ${r.found} of ${first.length} people. The seats with no one keep their lines.`;
+        if (r.found === 0) ctx.error("No one was found in the picture. Check that everyone is in view, then press Fit to the people again.");
+      } catch (e) {
+        if (alive) ctx.error(e.message);
+      } finally {
+        fitBtn.disabled = false;
+        fitBtn.textContent = "Fit to the people";
+      }
+    };
+    if (!fixed) controls.append(fitBtn, followBtn);
 
     // One row for each seat, in the seat's colour: is a person found in its slice, and how many feet.
     const rows = first.map(({ spotId }) => {
@@ -686,6 +721,8 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     const touch = (i) => { last = i; handles.forEach((h, j) => h.classList.toggle("is-last", j === i)); };
     const place = () => handles.forEach((h, i) => { h.style.left = `${bounds[i] * 100}%`; });
     const move = (i, x) => {
+      if (feet.following()) note = "Following is off for now because you moved a line. Press Follow people to turn it on.";
+      feet.setFollow(false, false); // dragging a line turns following off until the page is reloaded, without changing the saved choice
       bounds = moveBound(bounds, i, x);
       feet.setSlices(bounds); // the tracker reads the new slices on its next frame, and seats.html reads the saved ones
       place();
@@ -734,8 +771,17 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
 
     let goodAt = -Infinity;
     let frame = 0;
+    // First visit with no lines saved for this many seats: fit at once.
+    if (!fixed && feet.needsFit()) runFit();
+
     const tick = (now) => {
       const slices = feet.slices(), poses = feet.poses();
+      bounds = [slices[0].x0, ...slices.map((x) => x.x1)]; // following (or a fit) moves the lines by itself
+      place();
+      if (followBtn) {
+        followBtn.classList.toggle("is-on", feet.following());
+        followBtn.setAttribute("aria-pressed", feet.following());
+      }
       const dots = feet.raw().map((f) => ({ x: f.x, y: f.y, color: css(`--seat-${seatNumber(f.spotId)}`) }));
       pic.draw(dots, null, (g, w, h) => under(g, w, h, slices));
       let every = true;
@@ -752,11 +798,11 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       });
       if (every) goodAt = now;
       ctx.next(now - goodAt < HOLD_MS);
-      ctx.meta(feet.ready().camera ? `${hint} ${feet.fps()} frames a second.`.trim() : "Loading the pose model for the seats...");
+      ctx.meta(feet.ready().camera ? `${note} ${hint} ${feet.fps()} frames a second.`.replace(/\s+/g, " ").trim() : "Loading the pose model for the seats...");
       frame = requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => { alive = false; cancelAnimationFrame(frame); };
   }
 
   // Seated play, step 5: each lane on the floor, large, with its player's number. A tap flashes the player's own lane.

@@ -9,5 +9,5 @@ export default defineConfig({
   plugins: [linkPlugin()],
   server: { host: true, port: 5173, strictPort: true, watch: { ignored: notWatched } },
   preview: { host: true, port: 5173, strictPort: true },
-  build: { rollupOptions: { input: ["index.html", "stage.html", "track.html", "seats.html","pilot.html","floor-pilot.html"] } },
+  build: { rollupOptions: { input: ["index.html", "stage.html", "track.html", "seats.html","floor-pilot.html"] } },
 });

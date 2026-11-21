@@ -1,0 +1,28 @@
+/* Screen 5: "Look down!" then calm. Big and plain while counting, quiet while playing: eyes belong on the floor. */
+.look { text-align: center; }
+.look .ask { text-align: center; }
+.look .ask.big { font-size: 3.5rem; }
+
+.count { align-self: center; display: grid; place-items: center; width: 11rem; height: 11rem; margin-block: 1rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 50%; box-shadow: 0 0 0 0.75rem var(--c), 0 0 0 calc(0.75rem + var(--stroke)) var(--ink); }
+.digit { font: 400 7rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.count.pop .digit { animation: digit-pop 520ms var(--ease-pop) both; }
+@keyframes digit-pop { from { transform: scale(0.55); opacity: 0; } to { transform: none; opacity: 1; } }
+.arrow { align-self: center; width: 3.5rem; margin-top: 1rem; animation: nudge 1.2s var(--ease-in-out) infinite alternate; }
+.arrow svg { display: block; width: 100%; }
+@keyframes nudge { from { transform: translateY(-0.25rem); } to { transform: translateY(0.5rem); } }
+
+.now { display: flex; flex-direction: column; gap: 0.25rem; padding: 1.25rem 1.5rem; background: var(--c); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; text-align: left; }
+.now small { font-size: 0.875rem; font-weight: 800; }
+.now h2 { font: 400 2rem/1.1 var(--display); text-wrap: balance; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.875rem; }
+.stat { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.875rem 1.125rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 1.5rem; text-align: left; }
+.stat[hidden] { display: none; }
+.stat small { font-size: 0.875rem; font-weight: 800; color: var(--ink-2); }
+.stat b { font: 400 2.25rem/1 var(--display); font-variant-numeric: tabular-nums; }
+
+/* Pause and Stop: small on purpose */
+.pills { display: flex; justify-content: center; gap: 0.75rem; margin-top: auto; }
+.pill { min-height: 2.75rem; padding: 0.25rem 1.25rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 1.5rem; cursor: pointer; font-size: 0.9375rem; font-weight: 900; transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out); }
+.pill:hover { background: var(--c-soft); }
+.pill:active { transform: scale(0.95); }
+.pill.sure { background: var(--butter); }

@@ -1,0 +1,43 @@
+/* Screen 4: the floor, one pad for each seat. The pad's colour is its seat's colour (--seat, set by seats.js), always shown on its
+   name plate; the pad itself is pale when open, tinted and marked when it is yours, hatched when another phone holds it. */
+.seats .top { align-items: flex-start; }
+.seats .mascot-mount { width: 6rem; }
+
+.floor { position: relative; aspect-ratio: 330 / 220; background: var(--c-pale); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; }
+.floor-in { position: absolute; inset: 0; }
+.floor.empty { aspect-ratio: auto; min-height: 11rem; display: grid; place-items: center; padding: 1.5rem; text-align: center; background: var(--paper); border-style: dashed; color: var(--ink-2); }
+
+.pad {
+  position: absolute; display: flex; flex-direction: column; padding: 0; overflow: hidden; cursor: pointer; color: var(--ink);
+  background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 1rem;
+  transition: transform 160ms var(--ease-pop), background-color 200ms var(--ease-out), opacity 200ms var(--ease-out);
+  animation: pull-in 480ms var(--ease-out) both;
+}
+.pad:nth-child(2) { animation-delay: 60ms; } .pad:nth-child(3) { animation-delay: 120ms; } .pad:nth-child(4) { animation-delay: 180ms; }
+.pad:hover:not(:disabled) { transform: translateY(-0.125rem); }
+.pad:active:not(:disabled) { transform: scale(0.96); }
+.pad:disabled { cursor: not-allowed; }
+.pad[data-state="mine"] { background: color-mix(in srgb, var(--seat) 35%, #fff); transform: scale(1.03); }
+.pad[data-state="taken"] { background: repeating-linear-gradient(135deg, var(--paper) 0 0.5rem, var(--c-tint) 0.5rem 1rem); }
+.pad[data-state="open"]:disabled { opacity: 0.55; }
+
+/* the lanes: two columns for one player (one for each foot), one column when there are two or more */
+.lanes { flex: 1; display: flex; }
+.lanes i { flex: 1; transition: background-color 200ms var(--ease-out); }
+.lanes i + i { border-left: 3px dashed color-mix(in srgb, var(--ink) 45%, transparent); }
+.pad[data-state="open"] .lanes i { background: color-mix(in srgb, var(--c-tint) 55%, #fff); }
+.pad[data-state="mine"] .lanes i { background: color-mix(in srgb, var(--seat) 60%, #fff); }
+
+.tag { position: absolute; top: 0.5rem; left: 50%; translate: -50% 0; padding: 0.125rem 0.5rem; border: 2.5px solid var(--ink); border-radius: 0.75rem; background: var(--paper); font-size: 0.8125rem; font-weight: 900; line-height: 1.3; white-space: nowrap; }
+.tag:empty { display: none; }
+.pad[data-state="mine"] .tag { background: var(--butter); }
+
+.plate { display: flex; flex-direction: column; align-items: center; gap: 0.125rem; padding: 0.375rem 0.25rem 0.5rem; background: var(--seat); color: var(--seat-ink); border-top: var(--stroke) solid var(--ink); }
+.plate small { font-size: 0.75rem; font-weight: 900; line-height: 1; }
+.plate b { font: 400 1.875rem/1 var(--display); }
+
+/* what the lanes will be */
+.rules { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.rules li { padding: 0.5rem 1rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 1.25rem; font-size: 0.9375rem; font-weight: 800; line-height: 1.35; color: var(--ink-2); transition: background-color 220ms var(--ease-out); }
+.rules li.on { background: var(--butter); color: var(--ink); }
+.rules b { color: var(--ink); font-weight: 900; }

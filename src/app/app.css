@@ -1,4 +1,4 @@
-﻿/* Platform Piano, the phone's new look. The train you are on sets every accent: this page changes
+﻿/* Platform Piano, the phone app. The train you are on sets every accent: this page changes
    colour with the line (green, red, orange, blue). Ground is a pale blueprint grid in that colour.
    Shapes come from a transit map: thick lines, white stations with a dark ring, a station-sign pill.
    Lilita One (title) and Nunito (text), both SIL Open Font License, saved locally in case the
@@ -215,7 +215,7 @@ li.picked .dot svg { transform: scale(1); }
   min-height: 3.75rem; width: 100%; padding: 0.5rem 0.5rem 0.5rem 1.75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   background: var(--c); color: var(--on); border: var(--stroke) solid var(--ink); border-radius: 2rem; cursor: pointer;
   font: 400 1.5rem/1 var(--display); letter-spacing: 0.01em; text-align: left;
-  transition: transform 120ms var(--ease-out);
+  transition: transform 120ms var(--ease-out), opacity 160ms var(--ease-out);
 }
 .btn .go { flex: none; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 50%; color: var(--ink); }
 .btn .go svg { width: 1rem; height: 1rem; margin-left: 0.125rem; }
@@ -251,14 +251,24 @@ dialog.sheet::backdrop { background: rgb(20 22 28 / 0.5); animation: fade 200ms 
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* ---- The line about the link or the stage's refusal: one plain sentence under the top bar, stays in view while scrolling ---- */
+.status { position: sticky; top: 0.5rem; z-index: 5; display: grid; grid-template-rows: 0fr; margin-block: -0.75rem; transition: grid-template-rows 220ms var(--ease-out), margin 220ms var(--ease-out); }
+.status[data-show] { grid-template-rows: 1fr; margin-block: 0; }
+.status p { min-height: 0; overflow: hidden; padding: 0 1.25rem; background: var(--butter); border: 0 solid var(--ink); border-radius: 1.5rem; font-size: 0.9375rem; font-weight: 800; line-height: 1.35; transition: padding 220ms var(--ease-out), border-width 220ms var(--ease-out); }
+.status[data-show] p { padding: 0.625rem 1.25rem; border-width: var(--stroke); }
 
+/* ---- The opening: the line's train pulls in over the line's colour, then the screen comes up ---- */
+.opening { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: flex; flex-direction: column; justify-content: center; gap: 1.5rem; padding: 1.25rem; background: var(--c); animation: open-out 1500ms var(--ease-in-out) both; }
+.opening > div { width: 100%; max-width: 27rem; margin-inline: auto; animation: train-in 900ms var(--ease-out) both; }
+.opening .train { background: var(--paper); }
+.opening-name { text-align: center; font: 400 2rem/1 var(--display); animation: arrive 700ms var(--ease-out) 300ms both; }
+@keyframes open-out { 0%, 66% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes train-in { from { transform: translateX(-110vw); } to { transform: none; } }
 
-
-
-
-
-
-
-
-
-
+/* a button that cannot be pressed yet */
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:active { transform: none; }
+.btn:hover:not(:disabled) { filter: brightness(1.04); }
+.btn.ghost:hover:not(:disabled), .row:hover:not(:disabled) { background: var(--c-soft); }
+.sub { font-size: 1.0625rem; font-weight: 800; color: var(--ink-2); }
+.top .sub { margin-top: 0.5rem; }

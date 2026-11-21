@@ -134,3 +134,33 @@ test("one lane with the seat-mode detector: feet that swap names every frame pla
   }
   assert.equal(hits.length, 1, JSON.stringify(hits));
 });
+
+// ---- Facing: the camera stands across from the players (src/facing.js, the saved switch pp:facing) ----
+const facing = (on, run) => {
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => (k === "pp:facing" && on ? "1" : null), setItem() {} };
+  try { run(); } finally { globalThis.localStorage = before; }
+};
+
+test("facing: the pad on the canvas left takes the rightmost slice, and the dividers stay in camera order", () => {
+  const ids = (s) => s.map((x) => x.spotId);
+  assert.deepEqual(ids(makeSlices(layout, null)), [1, 2, 3]);
+  facing(true, () => {
+    const s = makeSlices(layout, null, [0.05, 0.2, 0.7, 0.95]);
+    assert.deepEqual(ids(s), [3, 2, 1]);
+    assert.deepEqual(s.map((x) => [x.x0, x.x1]), [[0.05, 0.2], [0.2, 0.7], [0.7, 0.95]]);
+  });
+  facing(false, () => assert.deepEqual(ids(makeSlices(layout, null)), [1, 2, 3]));
+});
+
+test("facing: a lone player's camera-left foot plays the right lane, and Swap feet flips it back; one lane is always lane 0", () => {
+  const left = { spotId: 1, foot: 0 }, right = { spotId: 1, foot: 1 };
+  facing(true, () => {
+    assert.equal(laneOf(left), 1);
+    assert.equal(laneOf(right), 0);
+    assert.equal(laneOf(left, [1]), 0);
+    assert.equal(laneOf(left, [2]), 1);
+    assert.equal(laneOf(left, [], { 1: 1 }), 0);
+  });
+  facing(false, () => { assert.equal(laneOf(left), 0); assert.equal(laneOf(left, [1]), 1); });
+});

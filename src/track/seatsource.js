@@ -1,12 +1,16 @@
 // The feet source for seated play: the camera cut into one slice for each seat (seats.js), each foot's tap
 // found (taps.js), handed to the game as each seat's two lanes in pad coordinates.
 // bySpot() gives { [spotId]: [{ u, v, lifted }] }, which is what session.tick takes as its feet.
-import { createSeatFeet } from "./seats.js";
+import { isFacing } from "../facing.js";
+import { createSeatFeet, findHips } from "./seats.js";
 import { createTapDetector } from "./taps.js";
 import { createReplayFeet, loadSeatRecording } from "./seatreplay.js";
-import { EDGES_KEY, boundsFor, slicesKey, writeSaved } from "./slices.js";
+import { EDGES_KEY, boundsFor, slicesKey, writeSaved, assignHips, fitBounds, easeBounds } from "./slices.js";
 
 export const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html and in setup
+export const FOLLOW_KEY = "seats:follow"; // false when the operator turned following off
+const FOLLOW_EVERY_MS = 100; // how often following looks at the hips: the saved dividers are written at most this often
+const FOLLOW_MAX_DT = 500; // a long gap (a hidden tab) moves the dividers no further than this long a gap would
 const SWAP_KEY = "pp:seat-swap"; // spot ids whose pad is mirrored: [2, 3]
 export const LANE_U = [0.25, 0.75]; // with two lanes (a lone player): foot 0 and foot 1, the middle of each lane
 export const ONE_LANE_U = 0.5; // with one lane (two to four players): both feet play the one lane
@@ -18,6 +22,9 @@ const saved = (key) => { try { return JSON.parse(localStorage.getItem(key)); } c
 // for each seat count); without a good one the slices are equal, across the saved outer edges `edges`.
 export function makeSlices(layout, edges, bounds) {
   const ids = [...layout.spots].sort((a, b) => a.rect.u - b.rect.u).map((s) => s.id);
+  // The camera faces the players when the projector does (facing.js): its left is the players' right, so the pad on the canvas
+  // left (the smallest u) takes the rightmost slice. The dividers stay in camera order.
+  if (isFacing()) ids.reverse();
   const b = boundsFor(ids.length, edges, bounds);
   return ids.map((spotId, i) => ({ spotId, x0: b[i], x1: b[i + 1] }));
 }
@@ -36,7 +43,8 @@ export function padFeet(feet, spotIds, swapped = [], lanes = {}) {
 }
 
 // The lane a foot (or a tap) plays, 0 or 1, and always 0 in a one-lane pad. A pad in `swapped` is mirrored.
-export const laneOf = ({ spotId, foot }, swapped = [], lanes = {}) => ((lanes[spotId] ?? 2) === 1 ? 0 : (foot === 1) !== swapped.includes(spotId) ? 1 : 0);
+// Facing the players the camera's left foot is the player's right, so the default flips, and Swap feet flips it back.
+export const laneOf = ({ spotId, foot }, swapped = [], lanes = {}) => ((lanes[spotId] ?? 2) === 1 ? 0 : (foot === 1) !== isFacing() !== swapped.includes(spotId) ? 1 : 0);
 
 // Where the floor draws a foot glow: in the pad's lane, for each foot that is down.
 export function glowFeet(layout, byPad) {
@@ -76,6 +84,39 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   let stream = null;
   let started = null;
   let tracking = false;
+  let fitted = !!saved(slicesKey(layout.spots.length)); // lines for this many seats were fitted, dragged or saved before
+  let held = false; // following is off for this session only (a line was dragged)
+  let lastFollow = 0;
+
+  // Where the dividers are now: n + 1 shares of the picture's width.
+  const boundsNow = () => [slices[0].x0, ...slices.map((s) => s.x1)];
+  const apply = (bounds, save = true) => {
+    slices.forEach((s, i) => { s.x0 = bounds[i]; s.x1 = bounds[i + 1]; });
+    if (save) writeSaved(bounds);
+  };
+  const following = () => !replay && !held && saved(FOLLOW_KEY) !== false;
+
+  // Each seat's own hips pull its dividers toward the fit, slowly (slices.js). A pose dropped as a neighbour's has someone else's hips, so it does not count.
+  function follow(now) {
+    if (!following() || !seats || now - lastFollow < FOLLOW_EVERY_MS) return;
+    const dt = Math.min(now - lastFollow, FOLLOW_MAX_DT);
+    lastFollow = now;
+    const poses = seats.poses();
+    const hips = slices.map((s) => { const p = poses.find((q) => q.spotId === s.spotId); return p && !p.dropped ? p.hipX : null; });
+    const current = boundsNow();
+    const next = easeBounds(current, fitBounds(hips, { n: slices.length, current }), dt, hips);
+    if (next) apply(next, fitted); // until the lines were fitted, dragged or saved, following moves them for this session only
+  }
+
+  // Waits for the picture to have a size (a camera takes a moment).
+  async function pictureReady() {
+    const img = video?.tagName !== "VIDEO";
+    for (let i = 0; i < 80; i++) {
+      if (img ? video.naturalWidth > 0 : video.videoWidth > 0 && video.readyState >= 2) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error("The camera picture did not start, so no one can be found in it. Check the camera step.");
+  }
 
   async function open() {
     if (still) {
@@ -115,6 +156,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     stream?.getTracks().forEach((t) => t.stop());
     stream = started = null;
     tracking = false;
+    lastFollow = 0;
     if (video) video.srcObject = null;
   }
 
@@ -139,6 +181,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       const swapped = saved(SWAP_KEY);
       const swap = Array.isArray(swapped) ? swapped : [];
       const { feet, taps: tapped } = taps.update(performance.now(), seats?.read() ?? [], lanes);
+      follow(performance.now());
       for (const t of tapped) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs };
       return padFeet(feet, spotIds, swap, lanes);
     },
@@ -158,8 +201,28 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     // New dividers (n + 1 shares of the picture's width, rising) take effect at once and are saved for seats.html and the next start.
     setSlices(bounds) {
       if (replay || bounds.length !== slices.length + 1) return;
-      slices.forEach((s, i) => { s.x0 = bounds[i]; s.x1 = bounds[i + 1]; });
-      writeSaved(bounds);
+      fitted = true;
+      apply(bounds);
+    },
+    // True until the lines for this many seats were fitted, dragged or loaded from a save: setup fits on its first visit.
+    needsFit: () => !fitted && !replay,
+    // Finds every person in the whole picture once and puts each seat's dividers around them, at once (not eased). Takes about a
+    // second, on a button and never per frame. Resolves { bounds, found, hips, ms, method }, `found` being how many people it saw.
+    async fit() {
+      if (replay) throw new Error("A recording has its own lines. They cannot be fitted.");
+      await pictureReady();
+      const r = await findHips(video, slices.length, { model });
+      const current = boundsNow();
+      const hips = assignHips(r.hips, current);
+      const bounds = fitBounds(hips, { n: slices.length, current });
+      if (r.hips.length) { fitted = true; apply(bounds); }
+      return { bounds, found: r.hips.length, hips, ms: r.ms, method: r.method };
+    },
+    // Following: each seat's hips keep nudging the lines (see follow above). It is on unless the operator turned it off (saved) or dragged a line (this session).
+    following,
+    setFollow(on, remember = true) {
+      held = !on && !remember;
+      if (remember) localStorage.setItem(FOLLOW_KEY, JSON.stringify(on));
     },
     // The pads changed. The same seat count only moves the slices (their order is the pads' order on the floor). A new count
     // builds the tracker again for the new number of slices, which takes a moment.
@@ -168,10 +231,12 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       if (replay) return;
       const fresh = makeSlices(next, saved(EDGES_KEY), saved(slicesKey(next.spots.length)));
       if (fresh.length === slices.length) {
+        if (fresh.some((f, i) => f.spotId !== slices[i].spotId)) { taps = createTapDetector(); tapLog = {}; } // the seats turned round (facing): old taps belong to other seats
         slices.forEach((s, i) => Object.assign(s, fresh[i]));
         return;
       }
       slices = fresh;
+      fitted = !!saved(slicesKey(next.spots.length));
       taps = createTapDetector();
       tapLog = {};
       seats.stop();

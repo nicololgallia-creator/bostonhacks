@@ -2,7 +2,7 @@
 // drawing helpers every floor screen shares. Nothing here knows about a song or a score.
 // Flat shapes only. The field is the colour of the line the train is on; tiles, outlines and text are ink;
 // white is for the hit moment and for text that sits on ink; gold is the one highlight.
-import { LINES, lineOf, BUTTER } from "../pilot/lines.js";
+import { LINES, lineOf, BUTTER } from "../app/lines.js";
 
 export const INK = "#141413";
 export const WHITE = "#FFFFFF";
@@ -61,8 +61,8 @@ const DISPLAY = '"Lilita One", "Arial Black", system-ui, sans-serif';
 const BODY = 'Nunito, system-ui, sans-serif';
 const FONTS = [
   // Each address is written out in full here: the build only carries a font file along when it sees the literal path.
-  ["Lilita One", new URL("../pilot/fonts/lilita-one-latin.woff2", import.meta.url).href, { weight: "400" }],
-  ["Nunito", new URL("../pilot/fonts/nunito-latin.woff2", import.meta.url).href, { weight: "600 900" }],
+  ["Lilita One", new URL("../app/fonts/lilita-one-latin.woff2", import.meta.url).href, { weight: "400" }],
+  ["Nunito", new URL("../app/fonts/nunito-latin.woff2", import.meta.url).href, { weight: "600 900" }],
 ];
 // Resolves once both fonts are in, so the canvas never draws a word in a stand-in face.
 export function loadFonts() {

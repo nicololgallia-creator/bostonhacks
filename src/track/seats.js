@@ -69,6 +69,61 @@ export function nameFeet(seen, prev = [null, null], aspect = 1) {
   return seen.map((f, i) => ({ ...f, foot: seen.length === 2 ? i : 1 - f.side }));
 }
 
+const SCAN_WIDTH = 0.4, SCAN_STEP = 0.2; // the windows of the scan: a share of the picture's width, and how far each moves on
+const SAME_PERSON = 0.05; // two hips closer than this across the picture are one person
+
+// Adds hips to a list of people already found, skipping any that is the same person as one there. Returns the list, sorted.
+export const addHips = (found, hips) => hips.reduce((all, h) => (all.some((x) => Math.abs(x - h) < SAME_PERSON) ? all : [...all, h]), found).sort((a, b) => a - b);
+
+// Finds where `n` people are in one picture (a video frame or an image), once, with no slices to start from. Returns
+// { hips: [x, ...] sorted left to right, at most n, each 0 to 1 across the picture; ms; method }.
+// The first try is one pose model asked for n people in the whole frame. If that finds fewer, it scans: the same model on
+// windows across the picture, each shown more or less one person, keeping the distinct hips. `method` is "whole" or "scan".
+export async function findHips(source, n, { model = "lite", scan = true } = {}) {
+  const t0 = performance.now();
+  const isVideo = source.tagName === "VIDEO";
+  const vw = isVideo ? source.videoWidth : source.naturalWidth, vh = isVideo ? source.videoHeight : source.naturalHeight;
+  if (!vw || !vh) throw new Error("The camera picture is not ready yet, so no one can be found in it.");
+  const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
+  const open = (delegate) => PoseLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: `/mediapipe/pose_landmarker_${model}.task`, delegate },
+    runningMode: "IMAGE",
+    numPoses: n,
+    minPoseDetectionConfidence: 0.3,
+    minPosePresenceConfidence: 0.3,
+    minTrackingConfidence: 0.3,
+  });
+  let landmarker;
+  try {
+    landmarker = await open("GPU");
+    landmarker.detect(document.createElement("canvas")); // proves the GPU path runs
+  } catch {
+    landmarker?.close();
+    landmarker = await open("CPU");
+  }
+  try {
+    // Every person's hips in the span x0 to x1 of the picture, in whole-picture units.
+    const look = (x0, x1) => {
+      const sx = Math.round(x0 * vw), sw = Math.max(1, Math.round(x1 * vw) - sx);
+      const canvas = document.createElement("canvas");
+      canvas.width = sw; canvas.height = vh;
+      canvas.getContext("2d").drawImage(source, sx, 0, sw, vh, 0, 0, sw, vh);
+      return landmarker.detect(canvas).landmarks
+        .map((raw) => hipsX(raw.map((p) => ({ x: (sx + p.x * sw) / vw, y: p.y, visibility: p.visibility }))))
+        .filter((h) => h !== null);
+    };
+    let hips = addHips([], look(0, 1));
+    let method = "whole";
+    if (scan && hips.length < n) {
+      method = "scan";
+      for (let x = 0; x + SCAN_WIDTH < 1 + SCAN_STEP / 2; x += SCAN_STEP) hips = addHips(hips, look(x, Math.min(1, x + SCAN_WIDTH)));
+    }
+    return { hips: hips.slice(0, n), ms: Math.round(performance.now() - t0), method, found: hips.length };
+  } finally {
+    landmarker.close();
+  }
+}
+
 // `perFrame` limits how many slices run on each new camera frame (they take turns), if all of
 // them together are too slow. Each seat's rate then falls to about fps * perFrame / seats.
 // `cpuOnly` skips the GPU, for a computer whose GPU path is slow or unreliable.

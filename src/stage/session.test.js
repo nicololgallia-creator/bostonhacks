@@ -880,25 +880,29 @@ test("any message counts as the phone being there, not only here", () => {
   assert.deepEqual(seatsOf(s, 30000), [["ann", 1]]);
 });
 
-test("the 10 second rule also works during a song and in the results, and the last phone going ends the song", () => {
+test("during a song a quiet phone keeps its seats (phones lock while players look at the floor); the wait starts when the song ends", () => {
   const s = twoSeated();
   start(s, ["long"]);
-  run(s, 0, 9000);
-  for (let t = 9020; t <= 19100; t += 20) { s.apply({ type: "here", clientId: "ann" }, t); s.tick(t, {}); } // only Ann is still there
-  assert.deepEqual(seatsOf(s, 19100), [["ann", 1]]);
-  assert.deepEqual(s.tick(19120, {}).pads.map((p) => p.spotId), [1]);
-  assert.equal(s.snapshot(19120).status, "playing");
-  s.tick(29121, {}); // Ann goes quiet too: nobody is left to play
-  assert.equal(s.snapshot(29121).status, "lobby");
-  assert.equal(s.snapshot(29121).players.length, 0);
+  const quiet = (from, to) => { for (let t = from; t <= to; t += 20) s.tick(t, {}); }; // ticks with no phone saying a word
+  quiet(0, 15000); // 15 s of countdown and play
+  assert.equal(s.snapshot(15000).status, "playing");
+  assert.deepEqual(seatsOf(s, 15000), [["ann", 1], ["ben", 2]]);
+  quiet(15020, 25000); // the song ends by itself, between 21 and 25 s
+  assert.equal(s.snapshot(25000).status, "results");
+  s.apply({ type: "here", clientId: "ann" }, 49000);
+  s.tick(50000, {}); // under 30 s after the song: Ben still has time to wake his phone
+  assert.deepEqual(seatsOf(s, 50000), [["ann", 1], ["ben", 2]]);
+  s.apply({ type: "here", clientId: "ann" }, 55000);
+  s.tick(55500, {}); // over 30 s: Ben is gone, Ann spoke and stays
+  assert.deepEqual(seatsOf(s, 55500), [["ann", 1]]);
 
   const r = twoSeated();
   start(r, ["tiny"]);
   run(r, 0, START + 1700, play(tiny, [1, 2]));
   assert.equal(r.snapshot(START + 1700).status, "results");
-  r.apply({ type: "here", clientId: "ann" }, START + 5000);
-  r.tick(START + 12000, {}); // Ben has been quiet since START + 1700
-  assert.deepEqual(seatsOf(r, START + 12000), [["ann", 1]]);
+  r.apply({ type: "here", clientId: "ann" }, START + 31000);
+  r.tick(START + 32000, {}); // Ben has been quiet since the song ended at about START + 1700
+  assert.deepEqual(seatsOf(r, START + 32000), [["ann", 1]]);
 });
 
 test("here from a phone that never joined is ignored", () => {

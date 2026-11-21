@@ -8,7 +8,8 @@ import { makeLayout, asLayout, MAX_SEATS } from "./layout.js";
 export const COUNTDOWN_MS = 3000;
 export const RESULTS_MS = 8000;
 const NOTICE_MS = 4000; // a refusal is shown this long
-const HERE_MS = 10000; // a player not heard from for this long is removed
+const HERE_MS = 10000; // a player not heard from for this long is removed, but never while a song is on
+const AFTER_SONG_MS = 30000; // after a song a quiet phone keeps its seats this long: it locked itself while its player looked at the floor
 const LIVE = ["countdown", "playing", "paused"];
 // Commands that change the game: only a phone that has joined may send them (the stage's own keys are trusted).
 const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "calibrate"];
@@ -272,7 +273,10 @@ export function createSession({ songs, layout, train } = {}) {
     // feetBySpot is { [spotId]: [{ u, v }] } in pad coordinates. Returns what to draw:
     // { status, pads: [{ spotId, lanes, tiles }], songMs, song }. While paused the pads stay as they were.
     tick(nowMs, feetBySpot) {
-      for (const [id, seen] of phones) if (nowMs - seen > HERE_MS) drop(id); // a phone that went quiet frees its seats
+      // A phone that went quiet frees its seats. Not during a song: everyone is looking at the floor, so phones lock and
+      // stop talking, and freeing their seats would end the game under their feet. The wait starts when the song ends.
+      if (LIVE.includes(status)) for (const id of phones.keys()) phones.set(id, nowMs + AFTER_SONG_MS - HERE_MS);
+      else for (const [id, seen] of phones) if (nowMs - seen > HERE_MS) drop(id);
       if (status === "results" && nowMs >= resultsAt) loadNext(nowMs);
       else if (status === "countdown" || status === "playing") {
         const t = nowMs - origin;
