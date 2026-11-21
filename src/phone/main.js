@@ -5,6 +5,8 @@ import "../tokens.css";
 import "./phone.css";
 import { openLink } from "../link.js";
 import { openRide } from "./ride.js";
+import { createPlay } from "./play.js";
+import { openSettings, settingsGear } from "./settings.js";
 
 const NAME_MAX = 10; // the longest name that still fits a pad when four people play
 const store = {
@@ -29,6 +31,7 @@ let lastJoinAt = 0;
 let choosing = false;  // seated, but looking for another seat
 let choosingFrom = null;
 let ride = null;       // the pick-the-music flow while it is open (ride.js); it owns the screen
+let settings = null;   // the settings screen while it is open (settings.js); it owns the screen too
 let view = null;      // "name" or "seats"
 let padsKey = "";
 let drawn = "";
@@ -42,6 +45,7 @@ const statusBox = $("#status");
 let link = null;
 const send = (msg) => link?.send({ ...msg, clientId: id });
 const join = () => { lastJoinAt = Date.now(); send({ type: "join", name }); };
+const play = createPlay({ screen, send, id }); // the screens while a song runs, and its results (play.js)
 
 function onStatus(up) {
   if (up) { upAt = Date.now(); if (wantsIn) join(); }
@@ -53,6 +57,7 @@ function onMessage(msg) {
   state = msg;
   stateAt = Date.now();
   ride?.onState(msg);
+  settings?.onState(msg);
   // The stage forgets players when its page reloads. Join again if we are missing.
   if (wantsIn && !me() && Date.now() - lastJoinAt > 1500) join();
   render();
@@ -65,6 +70,14 @@ if (new URLSearchParams(location.search).has("mock")) {
 }
 
 const me = () => state?.players.find((p) => p.clientId === id);
+
+// The settings button in the top bar, shown from the seated screen in the lobby.
+const gear = settingsGear(() => {
+  settings = openSettings({ screen, send, state, onClose: () => { settings = null; view = null; render(); } });
+  syncGear();
+});
+$(".top").append(gear);
+const syncGear = () => { gear.hidden = !(wantsIn && state?.status === "lobby" && !ride && !settings); };
 
 // ---- The one line that says what is wrong ----
 
@@ -86,7 +99,11 @@ setInterval(showStatus, 1000);
 // ---- Screens ----
 
 function render() {
-  if (ride) return;
+  syncGear();
+  if (ride || settings) return;
+  // A song is running or just ended: the stage owns the screen, and the seats come back with the lobby.
+  if (wantsIn && state && state.status !== "lobby") { view = null; play.show(state); return; }
+  play.hide();
   const want = wantsIn ? "seats" : "name";
   if (want !== view) {
     view = want;
@@ -167,7 +184,8 @@ function syncSeats() {
   const seat = mine?.spotId ?? null;
   if (choosing && seat !== choosingFrom) choosing = false; // moved, so done choosing
   const players = state?.players ?? [];
-  const snapshot = `${mine?.name}|${seat}|${choosing}|${state?.status}|${players.map((p) => `${p.spotId}${p.name}`)}`;
+  const lined = Boolean(state?.ready?.camera && state?.ready?.calibrated);
+  const snapshot = `${mine?.name}|${seat}|${choosing}|${state?.status}|${lined}|${players.map((p) => `${p.spotId}${p.name}`)}`;
   if (snapshot === drawn) return;
   drawn = snapshot;
 
@@ -228,12 +246,22 @@ function syncSeats() {
   music.className = "btn btn-primary";
   music.dataset.act = "music";
   music.textContent = "Pick the music";
-  screen.querySelector(".more").replaceChildren(...(seated && state?.status === "lobby" ? [music] : []));
+  const more = [];
+  if (seated && state?.status === "lobby") {
+    more.push(music);
+    if (!lined) {
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "The floor is not lined up yet. Run setup on the laptop.";
+      more.push(note);
+    }
+  }
+  screen.querySelector(".more").replaceChildren(...more);
 }
 
 let lastClaimAt = 0;
 screen.addEventListener("click", (e) => {
-  if (ride) return; // the flow handles its own taps
+  if (ride || settings) return; // those screens handle their own taps
   const pad = e.target.closest(".pad");
   if (pad && !pad.disabled) {
     const n = Number(pad.dataset.seat);
@@ -252,6 +280,7 @@ screen.addEventListener("click", (e) => {
   else if (act === "stay") choosing = false;
   else if (act === "music") {
     ride = openRide({ screen, send, onClose: () => { ride = null; view = null; render(); } });
+    syncGear();
     return;
   } else if (act === "leave") {
     send({ type: "leave" });
