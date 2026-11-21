@@ -2,6 +2,7 @@
 // so the stage draws through a CSS matrix3d that pulls the picture's four corners to where the person dragged them.
 // Also keeps the setup's saved result, { cameraId, corners, cameraToField }, in localStorage as `pp:calibration`.
 import { solve } from "../track/homography.js";
+import { turned } from "../facing.js";
 
 const KEY = "pp:calibration";
 const FULL = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]; // top left, top right, bottom right, bottom left
@@ -23,7 +24,7 @@ const watched = new WeakSet();
 export function applyKeystone(element) {
   const set = () => {
     element.style.transformOrigin = "0 0";
-    element.style.transform = matrix3dFor(loadCalibration().corners, innerWidth, innerHeight);
+    element.style.transform = matrix3dFor(turned(loadCalibration().corners), innerWidth, innerHeight); // turned half way round when the projector faces the players
   };
   set();
   if (!watched.has(element)) {

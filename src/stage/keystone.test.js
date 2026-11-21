@@ -90,3 +90,19 @@ test("broken saved values are ignored, one part at a time", () => {
   assert.deepEqual(c.corners, FULL);
   assert.equal(c.cameraToField.length, 9);
 });
+
+// The projector faces the players: the picture is turned half way round.
+test("turned() swaps opposite corners only when the gear faces the players, and the switch is saved", async () => {
+  const { isFacing, setFacing, turned } = await import("../facing.js");
+  assert.equal(isFacing(), false);
+  assert.deepEqual(turned(FULL), FULL);
+  setFacing(true);
+  assert.equal(isFacing(), true);
+  assert.deepEqual(turned(FULL), [FULL[2], FULL[3], FULL[0], FULL[1]]);
+  // A full window turned half way round: every point (x, y) goes to (width - x, height - y).
+  const m = matrix3dFor(turned(FULL), 100, 50).match(/-?[\d.e-]+/g).slice(1).map(Number); // the first number is the "3" of matrix3d
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} is not ${b}`);
+  [-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 100, 50, 0, 1].forEach((want, i) => close(m[i] / m[15], want));
+  setFacing(false);
+  assert.equal(isFacing(), false);
+});
