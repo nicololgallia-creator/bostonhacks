@@ -267,7 +267,10 @@ export function createScreens(kit) {
     lobby(th, view, now) {
       const { W, H, U } = kit;
       const { layout, players, train, qr, qrNote } = view;
-      kit.text("Scan to play", W / 2, H * 0.062, H * 0.1 * (1 + 0.025 * Math.sin(now * 0.004)), INK);
+      // One gentle bob for everything that moves in the lobby, so the headline and the mascot move as one. The headline
+      // used to pulse in size instead: text sizes step in whole pixels, so it jerked at its own pace beside the mascot.
+      const bob = Math.sin(now * 0.003);
+      kit.text("Scan to play", W / 2, H * 0.062 + bob * H * 0.006, H * 0.1, INK);
       if (train) kit.text(`${th.name} to ${train.headsign}, car ${train.car}`, W / 2, H * 0.152, H * 0.052, INK, false, "center", W * 0.92);
 
       const size = H * 0.52;
@@ -287,7 +290,7 @@ export function createScreens(kit) {
       } else {
         for (let i = 0; i < qrNote.length; i++) kit.text(qrNote[i], W / 2, H * (0.33 + i * 0.1), H * 0.07, INK, true, "center", W * 0.9);
       }
-      if (qr && mascot) ctx.drawImage(mascotCanvas(mh), left + size + gap, qy + (size - mh) / 2 + Math.sin(now * 0.003) * H * 0.01, mw, mh);
+      if (qr && mascot) ctx.drawImage(mascotCanvas(mh), left + size + gap, qy + (size - mh) / 2 + bob * H * 0.01, mw, mh);
 
       for (let i = 0; i < layout.spots.length; i++) {
         const spot = layout.spots[i];
