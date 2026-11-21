@@ -10,10 +10,10 @@
       <path d="M220 196 V250 L240 270 V330"/>
     </g>
     <g fill="none" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M100 196 V250 L80 270 V330" stroke="#F4A6A0"/>
-      <path d="M140 196 V292 L125 307 V350" stroke="#F9C98A"/>
-      <path d="M180 196 V292 L195 307 V350" stroke="#9DB8EE"/>
-      <path d="M220 196 V250 L240 270 V330" stroke="#9ED9B5"/>
+      <path d="M100 196 V250 L80 270 V330" stroke="#E7685E"/>
+      <path d="M140 196 V292 L125 307 V350" stroke="#F3AA45"/>
+      <path d="M180 196 V292 L195 307 V350" stroke="#5B86D3"/>
+      <path d="M220 196 V250 L240 270 V330" stroke="#4FAF79"/>
     </g>
     <g fill="#FFFFFF" stroke="#141413" stroke-width="5">
       <circle cx="80" cy="330" r="10"/>
@@ -26,7 +26,7 @@
   <g id="arm-ticket">
     <path d="M250 174 C276 178 288 196 284 212" fill="none" stroke="#141413" stroke-width="9" stroke-linecap="round"/>
     <g transform="rotate(-12 286 226)">
-      <rect x="266" y="212" width="40" height="26" rx="5" fill="#FFE38A" stroke="#141413" stroke-width="6"/>
+      <rect x="266" y="212" width="40" height="26" rx="5" fill="#FFDB62" stroke="#141413" stroke-width="6"/>
     </g>
   </g>
   <path id="body" d="M60 190 C60 112 108 72 160 72 C212 72 260 112 260 190 C260 206 250 212 238 205 C226 198 214 198 204 206 C192 215 178 215 168 206 C158 198 146 198 136 206 C124 215 110 215 100 206 C90 198 78 200 70 206 C62 211 60 203 60 190 Z" fill="#FFFFFF" stroke="#141413" stroke-width="9" stroke-linejoin="round"/>
@@ -36,9 +36,9 @@
     <path d="M148 168 Q160 178 172 168" fill="none" stroke="#141413" stroke-width="7" stroke-linecap="round"/>
   </g>
   <g id="cap">
-    <path d="M100 90 L106 48 C106 38 214 38 214 48 L220 90 Z" fill="#8FA3D9" stroke="#141413" stroke-width="9" stroke-linejoin="round"/>
-    <path d="M102 74 H218 L220 90 H100 Z" fill="#FFE38A" stroke="#141413" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M100 90 L106 48 C106 38 214 38 214 48 L220 90 Z" fill="#57679B" stroke="#141413" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M102 74 H218 L220 90 H100 Z" fill="#FFDB62" stroke="#141413" stroke-width="7" stroke-linejoin="round"/>
     <path d="M90 90 C120 108 200 108 230 90 Z" fill="#141413" stroke="#141413" stroke-width="7" stroke-linejoin="round"/>
-    <circle cx="160" cy="58" r="9" fill="#FFE38A" stroke="#141413" stroke-width="5"/>
+    <circle cx="160" cy="58" r="9" fill="#FFDB62" stroke="#141413" stroke-width="5"/>
   </g>
 </svg>
