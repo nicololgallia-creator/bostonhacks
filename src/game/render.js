@@ -21,6 +21,7 @@ const DROP_MS = 600; // a broken combo falls away for this long
 const MAX_LANES = 8;
 const NO_DASH = [];
 const PLATE = [{ h: 0.12, alpha: 0.85 }, { h: 0.04, alpha: 0.55 }, { h: 0.04, alpha: 0.25 }]; // the dark plate under a pad's score
+const RESULTS_TOP = 0.32; // results: the team's band fills the top of the picture, the seats sit below it
 
 const seatColour = (spotId) => SEATS[(((spotId - 1) % SEATS.length) + SEATS.length) % SEATS.length];
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -54,6 +55,10 @@ export function createRenderer(canvas) {
   let statusAt = 0;
   let lastNow = 0;
   let qrSprite = null;
+  let teamStamped = false; // the team's grade has landed on the results screen
+  let teamShown = 0; // the team score on the clock counts up toward the real one
+  const train = { key: null, from: 0 }; // the set's transit (stop and arrival) and when its first song began; key is null with no transit
+  const resultsRect = { x: 0, y: 0, w: 0, h: 0 };
 
   new FontFace("Bricolage Grotesque", `url(${FONT_URL})`, { weight: "400 800" })
     .load().then((face) => document.fonts.add(face))
@@ -361,7 +366,28 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = player ? 1 : 0.6;
     text(String(spot.id), r.x + r.w / 2, y + h * 0.42, Math.min(H * 0.22, r.w * 0.5), pal.base);
     ctx.globalAlpha = 1;
-    if (player) text(player.name, r.x + r.w / 2, y + h * 0.78, H * TEXT, WHITE, r.w - 24);
+    if (player?.name) text(player.name, r.x + r.w / 2, y + h * 0.78, H * TEXT, WHITE, r.w - 24);
+  }
+
+  // The team leads the results: its grade stamps in first, large, with the team's score and hits beside it.
+  // The seats stamp in after it, below.
+  function teamBand(song, team, now) {
+    const since = now - statusAt - 200;
+    if (song) text(song.title, W / 2, H * 0.04, H * 0.06, WHITE, W * 0.9);
+    if (since < 0) return;
+    const grade = team?.grade ?? "-";
+    const gx = W * 0.35;
+    const gy = H * 0.18;
+    if (!teamStamped) {
+      teamStamped = true;
+      fx.ring(gx, gy, WHITE, H * 0.3, 16, 600);
+      fx.burst(gx, gy, WHITE, grade === "S" ? 36 : 14, H * 1.1, H * 0.04);
+    }
+    text(grade, gx, gy, H * 0.2 * backOut(since / 450), grade === "C" ? DULL : WHITE);
+    const tx = W * 0.64;
+    text("TEAM", tx, H * 0.125, H * 0.06, WHITE, W * 0.3);
+    text(String(Math.round((team?.score ?? 0) * easeOut((since - 300) / 900))), tx, H * 0.2, H * TEXT, WHITE, W * 0.3);
+    text(`${team?.hits ?? 0} of ${team?.total ?? 0} hit`, tx, H * 0.27, H * 0.06, WHITE, W * 0.3);
   }
 
   // Each seat's grade stamps in, one after another, then its score counts up. The top score gets the hot frame.
@@ -376,49 +402,67 @@ export function createRenderer(canvas) {
     if (since < 0) return;
     if (!st.stamped) {
       st.stamped = true;
-      fx.ring(cx, r.y + r.h * 0.3, pal.light, r.w * 0.7, 16, 600);
-      fx.burst(cx, r.y + r.h * 0.3, pal.light, grade === "S" ? 36 : 14, H * 1.1, H * 0.04);
+      fx.ring(cx, r.y + r.h * 0.27, pal.light, r.w * 0.7, 16, 600);
+      fx.burst(cx, r.y + r.h * 0.27, pal.light, grade === "S" ? 36 : 14, H * 1.1, H * 0.04);
     }
-    text(grade, cx, r.y + r.h * 0.3, Math.min(H * 0.3, r.w * 0.7) * backOut(since / 450), grade === "C" ? pal.dull : pal.base);
-    text(String(Math.round((player?.score ?? 0) * easeOut((since - 300) / 900))), cx, r.y + r.h * 0.58, H * TEXT, WHITE, r.w - 24);
-    text(`Best ${player?.maxCombo ?? 0}`, cx, r.y + r.h * 0.72, H * 0.07, pal.light, r.w - 24);
-    if (player) text(player.name, cx, r.y + r.h * 0.88, H * TEXT, pal.base, r.w - 24);
-    if (top) text("TOP SCORE", cx, r.y + r.h * 0.07, H * 0.065, WHITE, r.w - 24);
+    text(grade, cx, r.y + r.h * 0.27, Math.min(H * 0.22, r.w * 0.7) * backOut(since / 450), grade === "C" ? pal.dull : pal.base);
+    text(String(Math.round((player?.score ?? 0) * easeOut((since - 300) / 900))), cx, r.y + r.h * 0.55, H * TEXT, WHITE, r.w - 24);
+    text(`Best ${player?.maxCombo ?? 0}`, cx, r.y + r.h * 0.69, H * 0.07, pal.light, r.w - 24);
+    text(`Seat ${spot.id}`, cx, r.y + r.h * 0.87, H * TEXT, pal.base, r.w - 24);
+    if (top) text("TOP SCORE", cx, r.y + r.h * 0.06, H * 0.065, WHITE, r.w - 24);
   }
 
-  // The train clock along the top edge: the train leaves as the tiles start and reaches its station as
-  // the song ends. Time left is in big digits, and the station carries the stop's name.
-  function clock(view, now) {
-    const { song, songMs, transit, layout } = view;
-    const total = songSeconds(song) * 1000;
-    const p = clamp01((songMs + TRAVEL_MS) / (total + TRAVEL_MS));
-    const secs = Math.ceil(Math.max(0, total - Math.max(0, songMs)) / 1000);
-    const urgent = songMs >= 0 && secs <= 10;
+  // The train clock along the top edge. With a transit the train runs from the start of the set to the real
+  // arrival (transit.endsAt) and the digits count down to it, across every song. With none, the train leaves
+  // as the tiles start and reaches its station as the song ends. The team's score sits between the digits and
+  // the track when more than one seat is playing. Time left is in big digits, and the station carries the stop's name.
+  function clock(view, now, dt) {
+    const { song, songMs, transit, layout, pads, team } = view;
+    let p, secs;
+    if (train.key !== null && transit.endsAt > train.from) {
+      const left = Math.max(0, transit.endsAt - Date.now());
+      p = clamp01(1 - left / (transit.endsAt - train.from));
+      secs = Math.ceil(left / 1000);
+    } else {
+      const total = songSeconds(song) * 1000;
+      p = clamp01((songMs + TRAVEL_MS) / (total + TRAVEL_MS));
+      secs = Math.ceil(Math.max(0, total - Math.max(0, songMs)) / 1000);
+    }
+    const urgent = secs <= 10 && (train.key !== null || songMs >= 0);
     const cy = H * 0.05;
     text(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`, W * 0.085, cy, H * 0.085, urgent && Math.floor(now / 250) % 2 ? SEATS[2] : WHITE, W * 0.15);
+    const showTeam = team && pads.length > 1;
+    if (showTeam) {
+      teamShown += (team.score - teamShown) * Math.min(1, dt * 0.012);
+      if (Math.abs(team.score - teamShown) < 1) teamShown = team.score;
+      text(`TEAM ${Math.round(teamShown)}`, W * 0.265, cy, H * 0.07, WHITE, W * 0.2);
+    }
 
     const sh = H * 0.07;
     let sw = sh;
-    if (transit?.stop) { setFont(H * 0.05); sw = Math.min(W * 0.3, ctx.measureText(transit.stop).width + H * 0.06); }
+    if (transit?.stop) { setFont(H * 0.045); sw = Math.min(W * 0.26, ctx.measureText(transit.stop).width + H * 0.06); }
     const sx = W * 0.98 - sw;
     if (p >= 0.995) fx.light(ctx, WHITE, sx + sw / 2, cy, sw * 0.8, 0.3 + 0.2 * Math.sin(now * 0.02));
     block(sx, cy - sh / 2, sw, sh, WHITE, 14);
-    if (transit?.stop) text(transit.stop, sx + sw / 2, cy, H * 0.05, "#000", sw - H * 0.04, false);
+    if (transit?.stop) text(transit.stop, sx + sw / 2, cy, H * 0.045, "#000", sw - H * 0.04, false);
     else { // no stop named: a finish flag
       const q = sh / 4;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) block(sx + i * q, cy - sh / 2 + j * q, q, q, "#000", 0);
     }
 
-    const x0 = W * 0.17;
+    const x0 = W * (showTeam ? 0.38 : 0.17);
     const x1 = sx - 14;
     const th = H * 0.016;
     block(x0, cy - th / 2, x1 - x0, th, "#3d3d3d", th / 2);
-    const carW = W * 0.042;
+    const room = x1 - x0;
+    const full = W * 0.06 + layout.spots.length * (W * 0.042 + 7);
+    const k = Math.min(1, (room * 0.55) / full); // a short track gets a shorter train, so it still has somewhere to go
+    const carW = W * 0.042 * k;
     const carH = H * 0.05;
-    const locoW = W * 0.06;
+    const locoW = W * 0.06 * k;
     const locoH = H * 0.06;
     const trainLen = locoW + layout.spots.length * (carW + 7);
-    const nose = x0 + trainLen + p * (x1 - x0 - trainLen);
+    const nose = x0 + trainLen + p * (room - trainLen);
     layout.spots.forEach((spot, i) => {
       const pal = palette(spot.id);
       const x = nose - locoW - (i + 1) * (carW + 7);
@@ -480,7 +524,7 @@ export function createRenderer(canvas) {
   // feet is every tracked foot on the field, [{ u, v }]. qr is the QR matrix ({ size, get(row, col) }) or
   // null, and qrNote says why there is none. song and transit are null when there is none.
   return function draw(view) {
-    const { status, layout, pads, players, songMs, song, events, qr, qrNote } = view;
+    const { status, layout, pads, players, songMs, song, transit, team, events, qr, qrNote } = view;
     const feet = view.feet ?? [];
     const now = performance.now();
     const dt = Math.min(50, now - lastNow);
@@ -488,6 +532,7 @@ export function createRenderer(canvas) {
     if (status !== prevStatus) {
       prevStatus = status;
       statusAt = now;
+      teamStamped = false;
       if (status === "lobby" || status === "countdown" || status === "results") states.clear(); // a new song, a new meter
     }
     layout.spots.forEach((spot, i) => rectOf(spot, i));
@@ -498,16 +543,27 @@ export function createRenderer(canvas) {
     ctx.fillRect(0, 0, W, H);
 
     const liveSong = song && songMs != null && (status === "countdown" || status === "playing" || status === "paused");
-    if (liveSong) clock(view, now);
+    // The set's train: it starts when the first song of a set with an arrival time begins, and runs to that arrival.
+    const key = transit?.endsAt ? `${transit.stop}|${transit.endsAt}` : null;
+    if (status === "lobby" || !key) train.key = null;
+    else if (liveSong && key !== train.key) { train.key = key; train.from = Date.now(); }
+    if (liveSong) clock(view, now, dt);
+    if (status === "results") teamBand(song, team, now);
 
     const scores = players.filter((p) => pads.some((x) => x.spotId === p.spotId)).map((p) => p.score);
     const best = scores.length > 1 ? Math.max(...scores) : -1;
     layout.spots.forEach((spot, i) => {
-      const r = rects[i];
+      let r = rects[i];
+      if (status === "results") { // the team's band takes the top of the picture, so the seats start lower
+        resultsRect.x = r.x; resultsRect.w = r.w;
+        resultsRect.y = H * RESULTS_TOP;
+        resultsRect.h = r.y + r.h - resultsRect.y;
+        r = resultsRect;
+      }
       const pad = pads.find((p) => p.spotId === spot.id);
       const player = players.find((p) => p.spotId === spot.id);
       if (!pad) idlePad(spot, r, status === "lobby" ? player : null, status === "lobby", now, layout);
-      else if (status === "results") resultsPad(spot, r, player, now, i, player?.score === best);
+      else if (status === "results") resultsPad(spot, r, player, now, i + 1, player?.score > 0 && player.score === best);
       else livePad(spot, r, pad, player, now, dt, layout);
     });
 
@@ -523,6 +579,12 @@ export function createRenderer(canvas) {
       text("Scan to play", W / 2, H * 0.05, H * 0.085 * pulse);
       if (qr) qrCode(qr, now);
       else qrNote.forEach((line, i) => text(line, W / 2, H * (0.25 + i * 0.12), H * TEXT, WHITE, W * 0.9));
+      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) { // browsers keep sound off until the page is clicked once
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now * 0.005);
+        text("Click once", W * 0.18, H * 0.42, H * 0.058, SEATS[2], W * 0.32);
+        text("to turn the sound on", W * 0.18, H * 0.49, H * 0.058, SEATS[2], W * 0.32);
+        ctx.globalAlpha = 1;
+      }
     } else if (liveSong && songMs < -1500) {
       // The song's title, from the countdown until the first tiles are well on their way.
       ctx.globalAlpha = clamp01((-1500 - songMs) / 1000);
@@ -551,8 +613,6 @@ export function createRenderer(canvas) {
       ctx.globalAlpha = 0.85 + 0.15 * Math.sin(now * 0.005);
       text("Paused", W / 2, H * 0.45, H * 0.2);
       ctx.globalAlpha = 1;
-    } else if (status === "results" && song) {
-      text(song.title, W / 2, H * 0.045, H * 0.065, WHITE, W * 0.9);
     }
   };
 }

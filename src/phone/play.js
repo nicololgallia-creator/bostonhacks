@@ -16,6 +16,8 @@ const dur = (sec) => {
   return m ? (s ? `${m} min ${s} s` : `${m} min`) : `${s} s`;
 };
 const seatColour = (n) => (n ? `var(--seat-${n})` : "var(--text)");
+// The stage sends the team's totals; if an older stage does not, add up every seat.
+const teamOf = (state) => state.team ?? { score: state.players.reduce((n, p) => n + (p.score || 0), 0), grade: null };
 
 export function createPlay({ screen, send, id }) {
   let mode = null;     // "live" or "results": the screen that is drawn now
@@ -44,8 +46,7 @@ export function createPlay({ screen, send, id }) {
       <div><h1 class="title"></h1><p class="sub"></p></div>
       <p class="clock"><span class="clock-label"></span> <span class="clock-time"></span></p>
       <dl class="stats">
-        <div><dt>Score</dt><dd data-score></dd></div>
-        <div><dt>Combo</dt><dd><span data-combo></span> <small data-mult></small></dd></div>
+        <div><dt>Team score</dt><dd data-score></dd></div>
       </dl>
       <div class="foot">
         <button class="btn btn-primary" type="button" data-pause></button>
@@ -69,22 +70,16 @@ export function createPlay({ screen, send, id }) {
     screen.replaceChildren(el);
   }
 
-  function paintLive(state, me) {
-    const seated = Boolean(me?.spotId);
+  // Everyone plays one song together, so the number on the live screen is the team's.
+  function paintLive(state, mine) {
     const paused = state.status === "paused";
-    el.style.setProperty("--c", seatColour(me?.spotId));
     q(".title").textContent = state.song?.title ?? "Now playing";
     q(".sub").textContent = paused ? "Paused."
-      : !seated ? "You are watching this song. Pick a seat when it ends."
+      : !mine.length ? "You are watching this song. Pick a seat when it ends."
       : state.status === "countdown" ? "Get ready. Look at the floor."
       : "Look at the floor.";
     q("[data-pause]").textContent = paused ? "Resume" : "Pause";
-    q(".stats").hidden = !seated;
-    if (seated) {
-      q("[data-score]").textContent = num(me.score);
-      q("[data-combo]").textContent = me.combo;
-      q("[data-mult]").textContent = me.multiplier > 1 ? `x${me.multiplier}` : "";
-    }
+    q("[data-score]").textContent = num(teamOf(state).score);
     paintClock();
   }
 
@@ -107,33 +102,26 @@ export function createPlay({ screen, send, id }) {
 
   // ---- Results ----
 
-  function buildResults(state, me) {
+  // The team first: its grade and score, then each of your seats with the hits out of its own total.
+  function buildResults(state, mine) {
     resultsAt = Date.now();
-    const ranked = state.players.filter((p) => p.spotId).sort((a, b) => b.score - a.score);
-    const mine = me?.spotId
-      ? `<div class="grade-row">
-           <span class="grade" role="img" aria-label="Grade ${esc(me.grade ?? "none")}">${esc(me.grade ?? "–")}</span>
-           <div class="grade-side"><span class="grade-score">${num(me.score)}</span><span class="grade-best">Best combo ${me.maxCombo}</span></div>
-         </div>
-         <dl class="stats counts">
-           <div><dt>Perfect</dt><dd>${me.counts.perfect}</dd></div>
-           <div><dt>Good</dt><dd>${me.counts.good}</dd></div>
-           <div><dt>Miss</dt><dd>${me.counts.miss}</dd></div>
-         </dl>`
-      : "";
-    const rows = ranked.map((p) => `
-      <div class="row" data-static${p.clientId === id ? " data-you" : ""} style="--c: ${seatColour(p.spotId)}">
-        <span class="order">${ranked.findIndex((o) => o.score === p.score) + 1}</span>
-        <span class="row-main"><span class="row-title">${esc(p.name)}</span><span class="row-sub">Seat ${p.spotId}${p.clientId === id ? ", you" : ""}</span></span>
+    const team = teamOf(state);
+    const together = state.players.filter((p) => p.spotId).length > 1;
+    const rows = mine.map((p) => `
+      <div class="row" data-static style="--c: ${seatColour(p.spotId)}">
+        <span class="order">${p.spotId}</span>
+        <span class="row-main"><span class="row-title">Seat ${p.spotId}</span><span class="row-sub">${p.counts.perfect + p.counts.good} of ${p.total} hits</span></span>
         <span class="row-end">${num(p.score)}</span>
       </div>`).join("");
     el = document.createElement("section");
     el.className = "play";
-    el.style.setProperty("--c", seatColour(me?.spotId));
     el.innerHTML = `
-      <div><h1 class="title">Results</h1><p class="sub"></p></div>
-      ${mine}
-      <div class="ranks">${rows}</div>
+      <div><h1 class="title">${together ? "You played it together." : "Your result."}</h1><p class="sub"></p></div>
+      <div class="grade-row">
+        ${team.grade ? `<span class="grade" role="img" aria-label="Team grade ${esc(team.grade)}">${esc(team.grade)}</span>` : ""}
+        <div class="grade-side"><span class="grade-score">${num(team.score)}</span><span class="grade-best">${together ? "Team score" : "Score"}</span></div>
+      </div>
+      ${mine.length ? `<p class="hint">${mine.length > 1 ? "Your seats" : "Your seat"}</p><div class="ranks">${rows}</div>` : ""}
       <div class="foot"><p class="next"></p></div>`;
     q(".sub").textContent = state.song?.title ?? "";
     screen.replaceChildren(el);
@@ -152,14 +140,14 @@ export function createPlay({ screen, send, id }) {
     show(state) {
       last = state;
       const want = state.status === "results" ? "results" : "live";
-      const me = state.players.find((p) => p.clientId === id);
+      const mine = state.players.filter((p) => p.clientId === id && p.spotId).sort((a, b) => a.spotId - b.spotId);
       if (want !== mode) {
         disarm();
         mode = want;
-        if (want === "live") buildLive(); else buildResults(state, me);
+        if (want === "live") buildLive(); else buildResults(state, mine);
         if (!clock) clock = setInterval(() => { paintClock(); paintNext(); }, 1000);
       }
-      if (want === "live") paintLive(state, me); else paintNext();
+      if (want === "live") paintLive(state, mine); else paintNext();
     },
     hide() {
       clearInterval(clock);

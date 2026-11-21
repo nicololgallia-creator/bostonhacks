@@ -17,7 +17,8 @@ import { applyKeystone } from "./keystone.js";
 import { openSetup } from "./setup.js";
 
 const LAYOUT_KEY = "pp:layout";
-const GUESTS = ["Ana", "Ben", "Cy", "Dee"];
+const SECTION_KEY = "pp:section"; // where this floor is, "Car 2, front"
+const PLAYERS_KEY = "pp:players"; // who is seated where, so a reloaded stage keeps everyone
 const DEMO_SONGS = ["twinkle", "greensleeves"];
 
 const params = new URLSearchParams(location.search);
@@ -34,11 +35,11 @@ function pickFeetSource() {
   return feetSources[name]();
 }
 
-function savedLayout() {
-  try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)); } catch { return null; } // createSession checks it
+function saved(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } // the session checks what it is given
 }
 
-const session = createSession({ songs, layout: savedLayout() });
+const session = createSession({ songs, layout: saved(LAYOUT_KEY), section: localStorage.getItem(SECTION_KEY) });
 const synth = createSynth();
 const draw = createRenderer(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
@@ -48,19 +49,31 @@ let qr = null;
 let qrNote = ["Looking for the network..."];
 
 // The session's clock runs offsetMs behind the wall clock, so a foot the camera saw late still lands on its tile.
-const clock = () => performance.now() - snap.settings.offsetMs;
+// A new lag set during a song waits for the next song, so the clock reads the one in use.
+const clock = () => performance.now() - session.offsetMs();
+
+// A reloaded stage gives back the players and their seats; a song that was running is gone, and the phones are told.
+const before = saved(PLAYERS_KEY);
+session.restore(before?.players, clock(), before?.live === true);
 
 // The link: every message from a phone goes to the session, and the phones get the State back.
 const link = openLink((message) => apply(message));
-const sendState = () => link.send(session.snapshot(clock()));
+const LIVE = ["countdown", "playing", "paused"];
+function sendState() {
+  const state = session.snapshot(clock());
+  link.send(state);
+  localStorage.setItem(SECTION_KEY, state.section.name);
+  localStorage.setItem(PLAYERS_KEY, JSON.stringify({ players: state.players.map(({ clientId, spotId }) => ({ clientId, spotId })), live: LIVE.includes(state.status) }));
+}
 
 function publish() {
   snap = session.snapshot(clock());
   localStorage.setItem(LAYOUT_KEY, JSON.stringify(snap.layout));
   sendState();
 }
-function apply(message) {
-  session.apply(message, clock());
+// `local` is the laptop's own keys, which need no join. Phones must have joined to use the controls.
+function apply(message, local = false) {
+  session.apply(message, clock(), { stage: local });
   publish();
 }
 setInterval(sendState, 500);
@@ -90,6 +103,7 @@ function playSounds(events) {
     const key = `${e.spotId}:${e.lane}`;
     if (e.type === "status") {
       if (e.status !== "playing") stopSound();
+      if (e.status === "countdown") setupHandle?.close(); // a song is starting, so setup gives the floor back
       if (e.status === "lobby") findAddress();
       sendState();
     } else if (e.type === "hit") synth.note(e.midi);
@@ -102,20 +116,25 @@ function playSounds(events) {
 
 // Setup lines the camera up with the projector. The camera source tells the session what is ready.
 const tellReady = () => { if (feetSource.ready) session.setReady(feetSource.ready()); };
+let setupHandle = null;
 function setup() {
-  openSetup({
+  setupHandle = openSetup({
     stage: { feet: feetSource },
     layout: snap.layout,
     offsetMs: snap.settings.offsetMs,
+    section: snap.section.name,
     // The pads the setup page dragged. False while a song is playing.
     setLayout: (layout) => { const ok = session.setLayout(layout); publish(); return ok; },
-    setOffset: (ms) => apply({ type: "set", offsetMs: ms }),
-    onClose: () => { applyKeystone(canvas); tellReady(); },
-  });
+    isPlaying: () => LIVE.includes(snap.status), // so setup can drop a "song is playing" refusal when the song ends
+    setOffset: (ms) => apply({ type: "set", offsetMs: ms }, true),
+    // Where this floor is. False when the name is empty or too long.
+    setSection: (name) => { const ok = session.setSection(name); publish(); return ok; },
+    onClose: () => { setupHandle = null; applyKeystone(canvas); tellReady(); },
+  }) ?? setupHandle; // already open: keep the handle we have
 }
 
 // A tile is drawn further along, so it looks on the line at the moment the player must step.
-const shift = () => (snap.settings.offsetMs / TRAVEL_MS) * HIT_V;
+const shift = () => (session.offsetMs() / TRAVEL_MS) * HIT_V;
 const shifted = (tiles) => tiles.map((t) => ({ ...t, v: t.v + shift(), vTail: t.vTail + shift() }));
 
 const feetSource = (() => { try { return pickFeetSource(); } catch (err) { return err; } })();
@@ -129,7 +148,7 @@ function frame() {
   const events = session.drain();
   playSounds(events);
   if (snap.settings.volume !== appliedVolume) { appliedVolume = snap.settings.volume; synth.setVolume?.(appliedVolume); }
-  if (view.status === "countdown" || view.status === "playing") synth.backing?.(view.song, view.songMs + snap.settings.offsetMs);
+  if (view.status === "countdown" || view.status === "playing") synth.backing?.(view.song, view.songMs + session.offsetMs());
   draw({
     status: view.status,
     layout: snap.layout,
@@ -138,6 +157,7 @@ function frame() {
     songMs: view.songMs,
     song: view.song,
     transit: snap.transit,
+    team: snap.team,
     feet: fieldFeet,
     events,
     qr,
@@ -147,7 +167,7 @@ function frame() {
 }
 
 function startDemo() {
-  apply({ type: "start", songIds: DEMO_SONGS, transit: null });
+  apply({ type: "start", songIds: DEMO_SONGS, transit: null }, true);
 }
 
 window.addEventListener("keydown", (e) => {
@@ -157,9 +177,9 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "KeyF") {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen();
-  } else if (e.code === "KeyP") apply({ type: snap.status === "paused" ? "resume" : "pause" });
-  else if (e.code === "KeyS") apply({ type: "skip" });
-  else if (e.code === "Escape") apply({ type: "stop" });
+  } else if (e.code === "KeyP") apply({ type: snap.status === "paused" ? "resume" : "pause" }, true);
+  else if (e.code === "KeyS") apply({ type: "skip" }, true);
+  else if (e.code === "Escape") apply({ type: "stop" }, true);
   else if (e.code === "KeyC") setup();
   else if (e.code === "Space" && demo) { e.preventDefault(); startDemo(); }
 });
@@ -172,10 +192,12 @@ if (feetSource instanceof Error) {
   feetSource.start().catch((err) => { if (!feetSource.ready) throw err; setup(); }).then(() => {
     tellReady();
     if (demo) {
-      snap.layout.spots.forEach((spot, i) => {
-        apply({ type: "join", clientId: `guest-${spot.id}`, name: GUESTS[i % GUESTS.length] });
+      snap.layout.spots.forEach((spot) => {
+        apply({ type: "join", clientId: `guest-${spot.id}` });
         apply({ type: "claim", clientId: `guest-${spot.id}`, spotId: spot.id });
       });
+      // Guests are not phones, so they say they are still there for themselves.
+      setInterval(() => snap.layout.spots.forEach((spot) => session.apply({ type: "here", clientId: `guest-${spot.id}` }, clock())), 3000);
       if (params.get("autostart") === "1") startDemo();
     }
     findAddress();

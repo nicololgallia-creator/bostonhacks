@@ -230,3 +230,16 @@ test("createGame takes a lane count for one pad, and still takes players", () =>
   assert.deepEqual(r.events.map((e) => [e.type, e.lane, e.grade]), [["hit", 1, "perfect"], ["miss", 0, "miss"]]);
   assert.equal(createGame({ song: tiny, players: 2 }).lanes, 6);
 });
+
+test("a note with its own lane uses it, a note without one is spread by pitch", () => {
+  const mixed = { id: "mixed", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 1, lane: 1 }, { beat: 1, midi: 64, beats: 1 }, { beat: 2, midi: 67, beats: 1, lane: 0 }] };
+  const pad = createGame({ song: mixed, lanes: 2 });
+  assert.deepEqual(pad.update(0, NONE).tiles.map((t) => t.lane), [1, 1, 0]); // 64 is the middle pitch: laneOf rounds to 1 of 2
+  const r = pad.update(0, [{ u: 0.75, v: 0.9 }]); // a foot in lane 1 hits the first tile
+  assert.deepEqual(r.events.map((e) => [e.type, e.lane, e.midi]), [["hit", 1, 60]]);
+});
+
+test("a part with no notes finishes at once and has no grade", () => {
+  const r = createGame({ song: { id: "empty", bpm: 120, notes: [] }, lanes: 2 }).update(0, NONE);
+  assert.deepEqual([r.done, r.total, r.grade], [true, 0, null]);
+});

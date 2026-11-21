@@ -1,0 +1,220 @@
+/* The map of your section: step one (the car seen from above) and the bench above the pads in step two.
+   Only tokens from src/tokens.css; rules are in DESIGN.md. It reuses .back from ride.css. */
+
+/* ---- Steps one and two: your line, and your car on a train of that line ---- */
+
+.place { display: flex; flex-direction: column; min-height: 0; padding-top: var(--space-4); }
+.place > .back { align-self: flex-start; }
+.place .hint { margin-top: var(--space-4); }
+.ask { margin: var(--space-7) 0 var(--space-4); font-size: var(--text-lg); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+
+[data-line="red"], [data-line="mattapan"] { --line: var(--line-red); }
+[data-line="orange"] { --line: var(--line-orange); --line-text: var(--line-orange-ink); }
+[data-line="blue"] { --line: var(--line-blue); }
+[data-line="green"] { --line: var(--line-green); }
+
+.lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.line {
+  min-height: 4.5rem;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--line);
+  color: var(--line-text, var(--text));
+  font-size: var(--text-lg);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), filter var(--dur-1) var(--ease-out);
+}
+.line:active { transform: scale(0.98); }
+@media (hover: hover) {
+  .line:hover, .car-cell:hover { filter: brightness(1.12); }
+}
+
+/* the cars of one train in a row, a stripe in the line's colour along the top of each */
+.train {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-7);
+  padding: var(--space-2);
+  border-radius: var(--radius-l);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 2px var(--surface-3);
+}
+.car-cell {
+  flex: 1 1 0;
+  max-width: 7rem;
+  min-height: 9rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  box-shadow: inset 0 0.375rem 0 var(--line);
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), filter var(--dur-1) var(--ease-out);
+}
+.car-cell:active { transform: scale(0.97); }
+
+/* ---- Step three: the car.  The lit section is the one real thing, drawn like the primary button. ---- */
+
+.section {
+  display: grid;
+  grid-template-rows: auto auto auto auto auto 1fr;
+  min-height: 0;
+  padding-top: var(--space-4);
+}
+.section > .back, .place > .back { margin-bottom: var(--space-2); }
+.section .hint { min-height: 3em; margin-top: var(--space-4); }
+
+.car {
+  margin-top: var(--space-4);
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-l);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 2px var(--surface-3);
+}
+
+.part {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: clamp(12rem, 30svh, 17rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+.part:active { transform: scale(0.98); }
+@media (hover: hover) {
+  .part[data-sample]:hover { background: var(--surface-3); }
+}
+.part[data-real] { flex-grow: 1.5; background: var(--action); color: var(--ink); box-shadow: var(--shadow-raise); }
+@media (hover: hover) {
+  .part[data-real]:hover { background: var(--action-hover); }
+}
+.part[data-real]:active { background: var(--action-press); }
+
+/* The bench along the wall: one cushion for each seat */
+.part-bench {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-s);
+  background: var(--surface-1);
+}
+.part-bench i { flex: 1; height: 1.5rem; border-radius: var(--space-1); background: var(--surface-3); }
+.part[data-real] .part-bench { background: var(--ink); }
+/* on the lit section the bench holds the real seats in their colours, bright when free and dim when taken */
+.part[data-real] .part-bench i { background: var(--surface-3); }
+.part[data-real] .part-bench i[data-seat] { background: var(--c); }
+.part[data-real] .part-bench i[data-taken] { background: var(--c-dim); }
+
+.part-text { display: grid; gap: var(--space-1); }
+.car-ends {
+  display: flex;
+  justify-content: space-between;
+  margin: var(--space-2) var(--space-3) 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+.part-name { font-size: var(--text-md); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
+.part[data-real] .part-name { font-weight: 700; }
+.part-free { font-size: var(--text-sm); line-height: 1.25; }
+
+/* ---- The seats: the bench sits above the pads, one cushion over each pad ---- */
+
+/* The rows are fixed: the top row (Back and Change, when it shows), the heading, bench, pads, free space, actions. The last two keep their rows when the top row is hidden. */
+.seats .back[hidden], .seats-top[hidden] { display: none; }
+.seats .more { grid-row: 5; }
+.seats .actions { grid-row: 6; }
+
+.bench {
+  --n: 3;
+  margin-top: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.bench[data-n="1"] { grid-template-columns: minmax(0, 11rem); justify-content: center; }
+.bench + .pads { margin-top: var(--space-3); }
+/* the wall behind the bench */
+.bench::before {
+  content: "";
+  grid-column: 1 / -1;
+  height: 0.375rem;
+  border-radius: var(--radius-s);
+  background: var(--surface-3);
+}
+
+.cushion {
+  position: relative;
+  height: 2.5rem;
+  border-radius: var(--radius-s) var(--radius-s) var(--radius-m) var(--radius-m);
+  background: var(--c-dim);
+  color: var(--c);
+  box-shadow: inset 0 0 0 2px var(--c);
+  cursor: pointer;
+  transition: background-color var(--dur-3) var(--ease-out), color var(--dur-3) var(--ease-out), box-shadow var(--dur-3) var(--ease-out);
+}
+.cushion[data-state="taken"] { background: var(--surface-2); color: var(--c-soft); box-shadow: none; cursor: default; }
+.cushion[data-state="idle"] { background: var(--surface-1); box-shadow: none; cursor: default; }
+.cushion[data-state="mine"] { background: var(--c); color: var(--ink); }
+/* someone is sitting here: a head and shoulders seen from above */
+.cushion[data-state="taken"]::after,
+.cushion[data-state="mine"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* A short phone (360 by 640): the seats screen must still show its main button */
+@media (max-height: 700px) {
+  .bench { margin-top: var(--space-4); }
+  .seats .actions { padding-top: var(--space-4); }
+}
+
+/* Back (to the car map) on the left, Change (line, car or section) on the right */
+.seats-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); }
+.link {
+  min-height: 2.75rem;
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: none;
+  color: var(--text-2);
+  font-size: var(--text-md);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .link:hover { color: var(--text); }
+}
+
+@media (max-height: 700px) {
+  .seats .title { font-size: var(--text-xl); }
+  .pads { height: clamp(8.5rem, calc(100svh - 33rem), 27rem); }
+}

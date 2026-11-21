@@ -7,9 +7,10 @@ import { listStops, nextTrains, rideSeconds, stopsOnRoute } from "../mbta/api.js
 import { songs } from "../songs/index.js";
 import { pickSongs } from "../songs/pick.js";
 import { songSeconds } from "../game/engine.js";
+import * as nav from "./nav.js";
 
 const REFRESH_MS = 20000; // the live trains are asked for no faster than this
-const SHOW_STOPS = 5;     // matches shown while typing a station
+const SHOW_STOPS = 4;     // matches shown while typing a station
 const SHOW_TRAINS = 6;
 const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 const CHEVRON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -50,19 +51,24 @@ const songRow = (s, lead = "") => `
     <span class="row-end">${dur(songSeconds(s))}</span>
   </div>`;
 
-export function openRide({ screen, send, onClose }) {
+// `line` is the route id the person already chose (like "Red" or "Green-B"), or null. It limits the stations and the
+// trains to that line and takes the "which line" question out of the riding path.
+export function openRide({ screen, send, line = null, onClose }) {
   let seq = 0;          // goes up with every screen, so a late answer for an old screen is dropped
   let timers = [];
   let closed = false;
   const steps = [];     // the screens so far; Back runs the one before
   const pick = {};      // stop, mode, trains, train, line, dest, ride
+  const onLine = (t) => !line || t.routeId === line;
 
+  const base = nav.depth(); // each step adds one history entry, so the phone's own Back steps back here too
   const stopTimers = () => { timers.forEach(clearInterval); timers = []; };
   const every = (ms, fn) => timers.push(setInterval(fn, ms));
-  const close = () => { if (closed) return; closed = true; stopTimers(); onClose(); };
-  const go = (step) => { steps.push(step); step(); };
-  const swap = (step) => { steps[steps.length - 1] = step; step(); }; // replaces the screen Back would return to
+  const close = () => { if (closed) return; closed = true; stopTimers(); nav.release(base); onClose(); };
+  // Runs when the history goes back one entry: the screen before, or out of the flow.
   const back = () => { steps.pop(); if (steps.length) steps[steps.length - 1](); else close(); };
+  const go = (step) => { steps.push(step); step(); nav.push(back); };
+  const swap = (step) => { steps[steps.length - 1] = step; step(); }; // replaces the screen Back would return to
 
   // Draws one step. `live()` says whether this screen is still the one showing.
   function view({ title, sub = "", body = "", foot = "", onClick }) {
@@ -81,7 +87,7 @@ export function openRide({ screen, send, onClose }) {
     subline.textContent = sub;
     subline.hidden = !sub;
     el.addEventListener("click", (e) => {
-      if (e.target.closest("[data-back]")) back();
+      if (e.target.closest("[data-back]")) nav.back();
       else onClick?.(e);
     });
     screen.replaceChildren(el);
@@ -90,18 +96,30 @@ export function openRide({ screen, send, onClose }) {
   }
   const pickedBy = (e, attr) => e.target.closest(`[${attr}]`)?.getAttribute(attr);
 
+  // ---- 0. Two equal ways to the music ----
+
+  function stepChoice() {
+    const v = view({
+      title: "Pick the music",
+      body: row({ title: "Fit my train", sub: "Songs that last as long as your wait or ride.", attrs: `data-way-in="train"`, big: true })
+        + row({ title: "Pick my own", sub: "Choose songs from the library.", attrs: `data-way-in="own"`, big: true }),
+      onClick: (e) => {
+        const way = pickedBy(e, "data-way-in");
+        if (way) go(way === "train" ? stepStop : stepSongs);
+      },
+    });
+    v.heading.focus({ preventScroll: true });
+  }
+
   // ---- 1. Where are you? ----
 
   function stepStop() {
     const v = view({
       title: "Where are you?",
-      sub: "Type your station.",
       body: `<input class="field" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off"
-               autocorrect="off" spellcheck="false" placeholder="Search stations" aria-label="Station name">
+               autocorrect="off" spellcheck="false" placeholder="Type your station" aria-label="Station name">
              <div class="list"></div><p class="hint"></p>`,
-      foot: `<button class="btn btn-quiet" type="button" data-songs>Just pick songs</button>`,
       onClick: (e) => {
-        if (e.target.closest("[data-songs]")) return go(stepSongs);
         if (e.target.closest("[data-retry]")) { all = null; failed = ""; load(); return draw(); }
         const i = pickedBy(e, "data-stop");
         if (i == null) return;
@@ -147,7 +165,7 @@ export function openRide({ screen, send, onClose }) {
       hint.textContent = note;
     };
     const load = () => listStops().then(
-      (s) => { all = s; },
+      (s) => { all = line ? s.filter((x) => x.lines.includes(line)) : s; },
       (e) => { failed = e.message; },
     ).then(() => { if (v.live()) draw(); });
 
@@ -220,7 +238,7 @@ export function openRide({ screen, send, onClose }) {
       drawHint();
     };
     const load = async () => {
-      try { trains = (await nextTrains(pick.stop.id)).slice(0, SHOW_TRAINS); fetchedAt = Date.now(); failed = ""; }
+      try { trains = (await nextTrains(pick.stop.id)).filter(onLine).slice(0, SHOW_TRAINS); fetchedAt = Date.now(); failed = ""; }
       catch (e) { failed = e.message; } // a dropped network keeps the last answer
       if (v.live()) drawAll();
     };
@@ -253,7 +271,7 @@ export function openRide({ screen, send, onClose }) {
     let lines = [];
     nextTrains(pick.stop.id).then((trains) => {
       const seen = new Set();
-      lines = trains.filter((t) => { const k = `${t.routeId}|${t.directionId}`; return !seen.has(k) && seen.add(k); });
+      lines = trains.filter(onLine).filter((t) => { const k = `${t.routeId}|${t.directionId}`; return !seen.has(k) && seen.add(k); });
       if (!v.live()) return;
       list.innerHTML = lines.map((t, i) => row({
         lead: dot(t.routeId),
@@ -309,8 +327,8 @@ export function openRide({ screen, send, onClose }) {
       (ride) => { if (v.live()) { pick.ride = ride; swap(stepSet); } },
       (e) => {
         if (!v.live()) return;
-        steps.pop(); // Back from the failure goes to the list of stops, not to this check again
-        go(() => {
+        // This screen is replaced by the failure, so Back from it goes to the list of stops, not to this check again.
+        swap(() => {
           const failed = view({
             title: "That ride did not work out.",
             sub: e.message,
@@ -346,14 +364,17 @@ export function openRide({ screen, send, onClose }) {
     // On the train the ride starts when Start is tapped, so the songs fit the ride's length.
     const left = () => (platform ? secondsTo(pick.train.arrivesAt) : pick.ride.seconds);
     const buffer = platform ? 20 : 30;
-    let plan = pickSongs({ seconds: left(), buffer });
-    const key = () => `${plan.fits}|${plan.songIds}`;
+    // The list is worked out once, so it never changes under a finger. As the train gets closer only the
+    // countdown moves; when the songs would run past the train the screen says so and offers a new set.
+    const plan = pickSongs({ seconds: left(), buffer });
+    let stale = false;
 
     const v = view({
       title: "",
       foot: `<p class="hint" data-error></p><button class="btn btn-primary" type="button" data-start>Start</button>`,
       onClick: (e) => {
         if (e.target.closest("[data-songs]")) return go(stepSongs);
+        if (e.target.closest("[data-update]")) return swap(stepSet);
         if (e.target.closest("[data-next]")) { pick.train = nextTrain(); return swap(stepSet); }
         const start = e.target.closest("[data-start]");
         if (!start) return;
@@ -363,17 +384,20 @@ export function openRide({ screen, send, onClose }) {
     });
     const nextTrain = () => (pick.trains ?? []).find((t) => t.seconds > pick.train.seconds);
 
+    const headline = () => (platform ? `${dur(left())} until your train.` : `${dur(pick.ride.seconds)} ride to ${pick.dest.name}.`);
     const draw = () => {
       const n = plan.songIds.length;
-      const foot = v.foot.querySelector("[data-start], [data-next], [data-songs]");
+      const foot = v.foot.querySelector("[data-start], [data-update], [data-next], [data-songs]");
       v.body.replaceChildren();
       if (plan.fits) {
-        v.heading.textContent = platform ? `${dur(left())} until your train.` : `${dur(pick.ride.seconds)} ride to ${pick.dest.name}.`;
-        v.subline.textContent = platform
-          ? `${n === 1 ? "This song ends" : `These ${WORDS[n] ?? n} songs end`} as it arrives.`
+        v.heading.textContent = headline();
+        v.subline.textContent = stale ? "This set no longer fits. The train is closer now."
+          : platform ? `${n === 1 ? "This song ends" : `These ${WORDS[n] ?? n} songs end`} just before it arrives.`
           : `${n === 1 ? "This song fills" : `These ${WORDS[n] ?? n} songs fill`} your ride${pick.ride.source === "schedule" ? ". The time comes from the schedule, not live trains." : "."}`;
         v.body.innerHTML = plan.songIds.map((id) => songRow(songs.find((s) => s.id === id))).join("");
-        foot.outerHTML = `<button class="btn btn-primary" type="button" data-start>Start</button>`;
+        foot.outerHTML = stale
+          ? `<button class="btn btn-primary" type="button" data-update>Update the set</button>`
+          : `<button class="btn btn-primary" type="button" data-start>Start</button>`;
       } else {
         const next = platform && nextTrain();
         v.heading.textContent = platform ? "Your train is too close for a song." : "Your ride is too short for a song.";
@@ -386,11 +410,10 @@ export function openRide({ screen, send, onClose }) {
     };
     draw();
     v.heading.focus({ preventScroll: true });
-    if (platform) {
-      let shownKey = key();
+    if (platform && plan.fits) {
       every(1000, () => {
-        plan = pickSongs({ seconds: left(), buffer });
-        if (key() !== shownKey) { shownKey = key(); draw(); } else if (plan.fits) v.heading.textContent = `${dur(left())} until your train.`;
+        const late = plan.totalSeconds > left();
+        if (late !== stale) { stale = late; draw(); } else v.heading.textContent = headline();
       });
     }
   }
@@ -438,10 +461,9 @@ export function openRide({ screen, send, onClose }) {
     sync();
   }
 
-  go(stepStop);
+  go(stepChoice);
   return {
     // The stage is the only source of truth. Once it leaves the lobby the songs are going, so the remote steps aside.
     onState(state) { if (state?.status !== "lobby") close(); },
-    close,
   };
 }

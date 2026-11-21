@@ -1,24 +1,17 @@
-// Seats on the field, with no browser calls. Rules are in PLAN.md under "Seats and session".
+// Seats on the field, with no browser calls. Rules are in PLAN.md under "Seats and session" and "Wave 3b".
 // Field coordinates: u 0 (left) to 1 (right), v 0 (far edge) to 1 (the players' edge).
 export const MAX_SEATS = 4;
-const LANES = { seated: 3, standing: 4 };
-export const postures = Object.keys(LANES);
+export const LANES = 2; // every pad has two lanes, one for each foot
 const EDGE = 0.04; // empty space at the left and right of the field
 const GAP = 0.04; // between two pads
 const TOP = 0.1;
 const BOTTOM = 0.96;
 const MARGIN = 0.1; // a foot this far (as a share of the pad's size) outside a pad still counts as in it
 
-export function lanesFor(posture) {
-  if (!postures.includes(posture)) throw new Error(`Posture must be "seated" or "standing", not "${posture}".`);
-  return LANES[posture];
-}
-
 const round = (x) => Math.round(x * 1e4) / 1e4;
 
 // 1 to 4 pads side by side, even gaps, filling the field's width.
-export function makeLayout({ posture, seats }) {
-  const lanes = lanesFor(posture);
+export function makeLayout({ seats }) {
   if (!Number.isInteger(seats) || seats < 1 || seats > MAX_SEATS) {
     throw new Error(`Seats must be a whole number from 1 to ${MAX_SEATS}.`);
   }
@@ -27,17 +20,19 @@ export function makeLayout({ posture, seats }) {
     id: i + 1,
     rect: { u: round(EDGE + i * (w + GAP)), v: TOP, w: round(w), h: round(BOTTOM - TOP) },
   }));
-  return { posture, lanes, spots };
+  return { lanes: LANES, spots };
 }
 
-// True when x can be used as a layout. Guards a layout read back from storage.
-export function isLayout(x) {
-  if (!x || typeof x !== "object" || !postures.includes(x.posture) || x.lanes !== LANES[x.posture]) return false;
-  const { spots } = x;
-  if (!Array.isArray(spots) || spots.length < 1 || spots.length > MAX_SEATS) return false;
+// A layout read back from storage or from setup, as a clean copy with 2 lanes, or null when its pads are broken.
+// An older saved layout that still carries a posture or 3 or 4 lanes loads as 2 lanes with the same pads.
+export function asLayout(x) {
+  const spots = x && typeof x === "object" ? x.spots : null;
+  if (!Array.isArray(spots) || spots.length < 1 || spots.length > MAX_SEATS) return null;
   const ok = (n) => typeof n === "number" && Number.isFinite(n);
-  return spots.every((s, i) => s && Number.isInteger(s.id) && spots.findIndex((o) => o.id === s.id) === i
+  const good = spots.every((s, i) => s && Number.isInteger(s.id) && spots.findIndex((o) => o.id === s.id) === i
     && s.rect && ok(s.rect.u) && ok(s.rect.v) && ok(s.rect.w) && ok(s.rect.h) && s.rect.w > 0 && s.rect.h > 0);
+  if (!good) return null;
+  return { lanes: LANES, spots: spots.map(({ id, rect: { u, v, w, h } }) => ({ id, rect: { u, v, w, h } })) };
 }
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));

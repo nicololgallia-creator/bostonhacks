@@ -35,13 +35,14 @@ export const gradeFor = (hits, total) => {
   return share >= 0.95 ? "S" : share >= 0.85 ? "A" : share >= 0.7 ? "B" : "C";
 };
 
-// `lanes` is how many lanes the pad has. `players` still works for the old stage: it picks the lanes.
+// `lanes` is how many lanes the pad has. A note with its own `lane` (a part from splitParts) uses it; one without
+// is spread over the lanes by its pitch. `players` still works for the old stage: it picks the lanes.
 export function createGame({ song, players, lanes = lanesFor(players) }) {
   const beatMs = 60000 / song.bpm;
   const tiles = song.notes.map((n, id) => {
     const ms = n.beats * beatMs;
     return {
-      id, lane: laneOf(song, n.midi, lanes), midi: n.midi, beats: n.beats,
+      id, lane: n.lane ?? laneOf(song, n.midi, lanes), midi: n.midi, beats: n.beats,
       at: n.beat * beatMs, tail: n.beat * beatMs + ms, kind: ms >= HOLD_MS ? "hold" : "tap",
       state: "waiting", grade: null,
     };
@@ -152,7 +153,7 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
       const hits = counts.perfect + counts.good;
       return {
         tiles: drawn, events, score, combo, maxCombo, multiplier: multiplierFor(combo), counts: { ...counts },
-        total: tiles.length, done, grade: done ? gradeFor(hits, tiles.length) : null,
+        total: tiles.length, done, grade: done && tiles.length ? gradeFor(hits, tiles.length) : null, // a seat with no notes has no grade
       };
     },
   };

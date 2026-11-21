@@ -1,4 +1,4 @@
-/* The remote's settings, the button that opens them, and the line about the floor. Only tokens from
+/* The remote's settings and the button that opens them. Only tokens from
    src/tokens.css; rules are in DESIGN.md. It reuses .back from ride.css. */
 
 /* The button in the top bar: one tap from the seated screen, never in the way */
@@ -21,9 +21,6 @@
 @media (hover: hover) {
   .gear:hover { color: var(--text); background: var(--surface-2); }
 }
-
-/* The quiet line under "Pick the music" when the camera and projector are not lined up */
-.more .hint { margin-top: var(--space-3); text-align: center; }
 
 .settings {
   display: flex;

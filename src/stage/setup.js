@@ -2,20 +2,23 @@
 // One step on screen at a time. Next stays off until the step has worked. The laptop and the projector show the
 // same picture, so the person reads the laptop and watches the floor.
 //
-//   openSetup({ stage: { feet }, layout, offsetMs, setLayout, setOffset, onClose })
+//   openSetup({ stage: { feet }, layout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose })
 //
 // `stage.feet` is the stage's feet source. A camera source (src/track/tracked.js) gets all six steps. Any other
 // source, like the mouse, skips the two steps that need a camera and is read from the field itself, so a click is
 // a foot arriving. Without a stage source, setup opens its own camera and closes it again.
 // `layout` and `offsetMs` are what the stage has now. `setLayout(layout)` returns false when the session refuses
-// it (a song is playing). `setOffset(ms)` saves the lag. onClose gets { camera, calibrated } for session.setReady.
+// it (a song is playing). `setOffset(ms)` saves the lag. `section` is the floor's place name, "Car 2, front", and
+// `setSection(name)` returns false when the session refuses it. `isPlaying()` says whether a song is running, so a
+// "song is playing" refusal goes away when it ends. onClose gets { camera, calibrated } for session.setReady.
+// openSetup returns { close }, or nothing when setup is already open.
 // After it, the stage should call applyKeystone on its canvas again, because the corners may have changed.
 import "./setup.css";
 import { apply, solve } from "../track/homography.js";
 import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
 import { applyKeystone, loadCalibration, matrix3dFor, saveCalibration } from "./keystone.js";
-import { feetBySpot, isLayout, lanesFor, makeLayout, MAX_SEATS } from "./layout.js";
+import { feetBySpot, asLayout, makeLayout, MAX_SEATS } from "./layout.js";
 import { createArrivals, measureLag } from "./lag.js";
 
 // Where the four marks sit on the field, so each is whole and clear of the window's edge. Order: the same four corners as the keystone.
@@ -63,7 +66,7 @@ function drawFeet(g, list, color) {
   }
 }
 
-export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, setOffset, onClose }) {
+export function openSetup({ stage, layout: startLayout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose }) {
   if (isOpen) return;
   isOpen = true;
   const camera = !stage?.feet || !!stage.feet.raw; // the mouse and other stand-ins have no camera to set up
@@ -182,9 +185,9 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
     const field = el("div", "setup-field is-grid");
     layer.append(field);
     applyKeystone(field);
-    ctx.say("Drag the four corners until every square on the floor looks square. The arrow keys nudge the last corner you touched.");
-    const moved = () => loadCalibration().corners.some((p) => p.x % 1 || p.y % 1); // the full-window corners are whole numbers
-    ctx.next(moved());
+    ctx.say("Look at the squares on the floor. If every one looks square, press Next.");
+    ctx.meta("If they look stretched, drag a corner until they look square. The arrow keys nudge the last corner you touched.");
+    ctx.next(true);
 
     let last = null;
     const handles = CORNERS.map((name, i) => {
@@ -210,7 +213,6 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
       feet?.reload();
       applyKeystone(field);
       place();
-      ctx.next(true);
     }
     const touch = (i) => { last = i; handles.forEach((h, j) => h.classList.toggle("is-last", j === i)); };
 
@@ -351,7 +353,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
   }
 
   function seatsStep() {
-    let layout = isLayout(startLayout) ? structuredClone(startLayout) : makeLayout({ posture: "seated", seats: 3 });
+    let layout = asLayout(startLayout) ?? makeLayout({ seats: 3 });
     const field = el("div", "setup-field is-quiet");
     const pads = el("div", "setup-pads");
     const canvas = el("canvas");
@@ -360,15 +362,19 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
     field.append(pads, canvas);
     layer.append(field);
     applyKeystone(field);
-    ctx.say("Sit or stand where you will play. Drag each pad until your feet are inside it.");
+    ctx.say("Drag each pad until it sits at the feet of its seat.");
     ctx.next(true);
 
-    // Every change goes to the stage first. Only what the stage accepts is drawn.
+    // Every change goes to the stage first. Only what the stage accepts is drawn. A refusal stays until the
+    // choice changes or the song ends, whichever comes first.
+    let refused = false;
     function commit(next) {
       if (!setLayout(next)) {
+        refused = true;
         ctx.error("A song is playing, so the seats cannot change now. Stop the song, then try again.");
         return false;
       }
+      refused = false;
       ctx.error("");
       layout = next;
       return true;
@@ -447,30 +453,31 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
       if (commit(withRect(id, rect))) place(pad, rect);
     });
 
-    // Sitting or standing keeps the pads where they are. A new seat count spaces them evenly again.
-    const choose = (posture, seats) => {
-      const next = seats === layout.spots.length
-        ? { ...layout, posture, lanes: lanesFor(posture) }
-        : makeLayout({ posture, seats });
-      if (commit(next)) { build(); mark(); }
+    // A new seat count spaces the pads evenly again. The same count keeps the pads where they are.
+    const choose = (seats) => {
+      if (seats !== layout.spots.length && commit(makeLayout({ seats }))) { build(); mark(); }
     };
     const options = (label, items) => {
       const group = el("div", "setup-row");
       group.append(el("span", "setup-label", label), ...items);
       return group;
     };
-    const postureButtons = [["seated", "Sitting (3 lanes)"], ["standing", "Standing (4 lanes)"]]
-      .map(([posture, label]) => ({ posture, b: button(label, "", () => choose(posture, layout.spots.length)) }));
-    const countButtons = Array.from({ length: MAX_SEATS }, (_, i) => ({ n: i + 1, b: button(String(i + 1), "is-count", () => choose(layout.posture, i + 1)) }));
-    const even = button("Space them evenly", "", () => { if (commit(makeLayout({ posture: layout.posture, seats: layout.spots.length }))) build(); });
-    // The buttons that match the layout are lit.
+    const countButtons = Array.from({ length: MAX_SEATS }, (_, i) => ({ n: i + 1, b: button(String(i + 1), "is-count", () => choose(i + 1)) }));
+    const even = button("Space them evenly", "", () => { if (commit(makeLayout({ seats: layout.spots.length }))) build(); });
+    // The button that matches the layout is lit.
     function mark() {
-      postureButtons.forEach(({ posture, b }) => { b.classList.toggle("is-on", posture === layout.posture); b.setAttribute("aria-pressed", posture === layout.posture); });
       countButtons.forEach(({ n, b }) => { b.classList.toggle("is-on", n === layout.spots.length); b.setAttribute("aria-pressed", n === layout.spots.length); });
     }
+    // Where this floor is, so phones can show which part of the car it is. Saved as it is typed.
+    const where = el("input", "setup-select");
+    where.type = "text";
+    where.value = section ?? "";
+    where.maxLength = 30;
+    where.setAttribute("aria-label", "Where is this?");
+    where.addEventListener("input", () => ctx.error(setSection(where.value) ? "" : "Type where this is, in 30 letters or fewer."));
     controls.replaceChildren(
-      options("I will be", postureButtons.map((x) => x.b)),
       options("Seats", [...countButtons.map((x) => x.b), even]),
+      options("Where is this?", [where]),
     );
     build();
     mark();
@@ -480,6 +487,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
     const src = source(field);
     let frame = 0;
     const tick = () => {
+      if (refused && !isPlaying?.()) { refused = false; ctx.error(""); } // the song has ended, so the refusal no longer holds
       const list = src.read();
       drawFeet(g, list, glow);
       const inside = Object.values(feetBySpot(layout, list)).flat().length;
@@ -623,4 +631,5 @@ export function openSetup({ stage, layout: startLayout, offsetMs, setLayout, set
   }
 
   go(0);
+  return { close }; // so the stage can close setup when a song starts
 }

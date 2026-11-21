@@ -1,4 +1,4 @@
-// The remote's settings: seats, volume, the camera and the lag. One tap from the seated screen in the
+// The remote's settings: the number of seats, volume, the camera and the lag. One tap from the seated screen in the
 // lobby (the button in the top bar), and gone from it as soon as a song starts. Every control sends one
 // message from PLAN.md ("Seats and session"); what is drawn comes from the stage's State.
 import "./settings.css";
@@ -40,10 +40,6 @@ export function openSettings({ screen, send, state, onClose }) {
     <h1 class="title" tabindex="-1">Settings</h1>
     <section class="set" aria-labelledby="set-seats">
       <h2 id="set-seats">Seats</h2>
-      <div class="seg" role="group" aria-label="Sitting or standing">
-        <button class="btn btn-quiet" type="button" data-posture="seated">Sitting</button>
-        <button class="btn btn-quiet" type="button" data-posture="standing">Standing</button>
-      </div>
       <div class="seg" role="group" aria-label="How many seats">
         ${[1, 2, 3, 4].map((n) => `<button class="btn btn-quiet" type="button" data-seats="${n}" aria-label="${n} ${n === 1 ? "seat" : "seats"}">${n}</button>`).join("")}
       </div>
@@ -66,7 +62,8 @@ export function openSettings({ screen, send, state, onClose }) {
   const q = (s) => el.querySelector(s);
 
   let last = state;
-  let tappedAt = 0;          // the last volume or lag tap, so the next State does not undo quick taps
+  let asked = false;         // "Line up the camera" was tapped, so the laptop is showing setup
+  let tappedAt = 0;         // the last volume or lag tap, so the next State does not undo quick taps
   const value = {};          // volume in percent, lag in ms: what the numbers show now
   const read = (s) => {
     value.volume = Math.round((s?.settings?.volume ?? 0.8) * 100);
@@ -75,8 +72,11 @@ export function openSettings({ screen, send, state, onClose }) {
   read(state);
 
   function paint() {
-    for (const b of el.querySelectorAll("[data-posture]")) b.setAttribute("aria-pressed", String(b.dataset.posture === last?.layout?.posture));
     for (const b of el.querySelectorAll("[data-seats]")) b.setAttribute("aria-pressed", String(Number(b.dataset.seats) === last?.layout?.spots?.length));
+    // The floor's state is a setup matter, so it is told here and nowhere a stranger looks.
+    q("[data-camera]").textContent = asked ? "Setup is open on the laptop."
+      : last?.ready?.camera && last?.ready?.calibrated ? "The camera is lined up with the floor."
+      : "The floor is not lined up yet. Run setup on the laptop.";
     q('[data-value="volume"]').textContent = `${value.volume}%`;
     q('[data-value="lag"]').textContent = `${value.lag} ms`;
     q('[data-step="volume"][data-by="-1"]').disabled = value.volume <= 0;
@@ -89,12 +89,11 @@ export function openSettings({ screen, send, state, onClose }) {
     const b = e.target.closest("button");
     if (!b) return;
     if (b.hasAttribute("data-back")) return onClose();
-    const layout = last?.layout;
-    if (b.dataset.posture) send({ type: "layout", posture: b.dataset.posture, seats: layout?.spots?.length ?? 3 });
-    else if (b.dataset.seats) send({ type: "layout", posture: layout?.posture ?? "seated", seats: Number(b.dataset.seats) });
+    if (b.dataset.seats) send({ type: "layout", seats: Number(b.dataset.seats) });
     else if (b.hasAttribute("data-calibrate")) {
       send({ type: "calibrate" });
-      q("[data-camera]").textContent = "Setup is open on the laptop.";
+      asked = true;
+      paint();
     } else if (b.dataset.step) {
       const by = Number(b.dataset.by);
       tappedAt = Date.now();
@@ -115,6 +114,7 @@ export function openSettings({ screen, send, state, onClose }) {
   window.scrollTo(0, 0);
 
   return {
+    close: onClose,
     onState(s) {
       last = s;
       if (s.status !== "lobby") return onClose(); // the songs are going, so settings step aside
