@@ -166,3 +166,94 @@ test("on a real recording of one person tapping, finds about as many taps as the
     assert.equal(mine.filter((x) => x.atMs >= 30000 && x.atMs <= 32000).length, 0, `foot ${foot} at rest`);
   }
 });
+
+// Seat mode: a seat with one lane is one signal, the highest of its feet, so no foot needs a name.
+const ONE = { 1: 1 };
+// Runs seat 1's two feet, each y given by a function of time (undefined: the foot is not seen). `rename` is called to
+// choose the names for the two feet in a frame, to make names flip. Returns the taps and what the detector handed back.
+function seat(yA, yB, { lanes = ONE, to = 3000, step = 20, rename = (t) => [0, 1] } = {}) {
+  const det = createTapDetector();
+  const taps = [], handed = [];
+  for (let t = 0; t <= to; t += step) {
+    const [na, nb] = rename(t);
+    const feet = [[na, yA(t)], [nb, yB(t)]].filter(([, y]) => y !== undefined).map(([foot, y]) => ({ spotId: 1, foot, x: 0.3 + foot * 0.1, y, shin: 0.2 }));
+    const r = det.update(t, feet, lanes);
+    taps.push(...r.taps);
+    handed.push(r.feet);
+  }
+  return { taps, handed };
+}
+const rest = (y) => () => y;
+const upBetween = (y, a, b, h = LIFT) => (t) => (t >= a && t < b ? y - h : y);
+
+test("seat mode: either foot lifting and landing is one tap, reported as foot 0, and the seat comes back as one foot", () => {
+  const { taps, handed } = seat(rest(0.8), upBetween(0.82, 500, 700));
+  assert.deepEqual(taps, [{ spotId: 1, foot: 0, atMs: 700 }]);
+  assert.ok(handed.every((fs) => fs.length === 1 && fs[0].foot === 0));
+  assert.equal(handed[Math.round(600 / 20)][0].lifted, true);
+  assert.equal(handed[Math.round(400 / 20)][0].lifted, false);
+  const other = seat(upBetween(0.8, 500, 700), rest(0.82));
+  assert.deepEqual(other.taps.map((x) => x.atMs), [700]);
+});
+
+test("seat mode: the two feet taking turns give a tap each", () => {
+  const { taps } = seat(upBetween(0.8, 500, 700), upBetween(0.82, 1000, 1200));
+  assert.deepEqual(taps.map((x) => x.atMs), [700, 1200]);
+});
+
+test("seat mode: feet swapping names every frame make no taps, where separate feet read the flips as lifts", () => {
+  const flip = (t) => ((t / 20) % 2 ? [1, 0] : [0, 1]);
+  // feet resting 0.04 apart in height, names flipping each frame
+  assert.equal(seat(rest(0.8), rest(0.84), { rename: flip }).taps.length, 0);
+  assert.ok(seat(rest(0.8), rest(0.84), { rename: flip }).handed.every((fs) => !fs[0].lifted));
+  const apart = seat(rest(0.8), rest(0.84), { rename: flip, lanes: {} }).handed; // separate feet: the flips read as lifts
+  assert.ok(apart.some((fs) => fs.some((f) => f.lifted)), "the flips fool the two-foot detector");
+  // and a real tap still counts with names flipping
+  assert.deepEqual(seat(rest(0.8), upBetween(0.84, 500, 700, 0.09), { rename: flip }).taps.map((x) => x.atMs), [700]);
+});
+
+// The cost of one signal: the highest foot. A foot resting lower in the picture than the other (nearer the camera) has to rise past
+// the other foot before the seat counts as lifted. On the real recording the two feet rest about 0.01 to 0.02 apart.
+test("seat mode: a lower foot lifted by less than the gap to the other foot is not seen, past the gap it is", () => {
+  assert.equal(seat(rest(0.8), upBetween(0.84, 500, 700, 0.05)).taps.length, 0); // up to 0.79: only 0.01 above the other foot
+  assert.equal(seat(rest(0.8), upBetween(0.84, 500, 700, 0.07)).taps.length, 1); // up to 0.77: 0.03 above it
+});
+
+test("seat mode: a foot that drops out and comes back, even for two seconds, is not a lift or a tap", () => {
+  const higher = (t) => (t >= 1000 && t < 3000 ? undefined : 0.8); // the higher foot is the one that goes
+  const { taps, handed } = seat(higher, rest(0.84), { to: 6000 });
+  assert.equal(taps.length, 0);
+  assert.ok(handed.every((fs) => fs.every((f) => !f.lifted)));
+  // the lower one going is no jump at all
+  assert.equal(seat(rest(0.8), (t) => (t >= 1000 && t < 3000 ? undefined : 0.84), { to: 6000 }).taps.length, 0);
+});
+
+test("seat mode: a lone foot works, jitter gives nothing, and a foot held up for two seconds taps once when it lands", () => {
+  assert.deepEqual(seat(upBetween(0.8, 500, 700), () => undefined).taps.map((x) => x.atMs), [700]);
+  assert.equal(seat((t) => 0.8 + ((t / 20) % 2 ? 0.003 : -0.003), rest(0.84)).taps.length, 0);
+  const held = seat(rest(0.8), upBetween(0.84, 500, 2500, 0.09), { to: 4000 });
+  assert.deepEqual(held.taps.map((x) => x.atMs), [2500]);
+  assert.ok(held.handed.slice(Math.round(600 / 20), Math.round(2400 / 20)).every((fs) => fs[0].lifted));
+});
+
+test("seat mode: only the seats with one lane are merged; a seat with two lanes keeps both feet, and seats do not mix", () => {
+  const det = createTapDetector();
+  const feet = [0, 1].flatMap((foot) => [1, 2].map((spotId) => ({ spotId, foot, x: 0.3, y: 0.8 + foot * 0.04, shin: 0.2 })));
+  const r = det.update(0, feet, { 1: 1, 2: 2 });
+  assert.equal(r.feet.filter((f) => f.spotId === 1).length, 1);
+  assert.equal(r.feet.filter((f) => f.spotId === 2).length, 2);
+  // seat 1 (one lane) lifts one foot; seat 2 (two lanes) does nothing
+  const up = det.update(100, feet.map((f) => (f.spotId === 1 && f.foot === 1 ? { ...f, y: f.y - 0.09 } : f)), { 1: 1, 2: 2 });
+  assert.deepEqual(up.feet.filter((f) => f.lifted).map((f) => f.spotId), [1]);
+  const down = det.update(200, feet, { 1: 1, 2: 2 });
+  assert.deepEqual(down.taps, [{ spotId: 1, foot: 0, atMs: 200 }]);
+});
+
+test("seat mode: a seat that goes from two lanes to one does not carry a stale lift", () => {
+  const det = createTapDetector();
+  const feet = (up) => [{ spotId: 1, foot: 0, x: 0.3, y: 0.8 - up, shin: 0.2 }, { spotId: 1, foot: 1, x: 0.4, y: 0.84, shin: 0.2 }];
+  for (let t = 0; t < 400; t += 20) det.update(t, feet(0), {});
+  assert.equal(det.update(400, feet(0.06), {}).feet.find((f) => f.foot === 0).lifted, true); // lifted in two-lane mode
+  const r = det.update(420, feet(0), ONE); // the next song has one lane: this seat starts its own track
+  assert.deepEqual(r.feet.map((f) => f.lifted), [false]);
+});

@@ -50,8 +50,10 @@ function cameraReason(e) {
 }
 
 // `src` is a video file to play instead of the camera. With no `video`, one is made and put on the page for good.
-export function createSeatSource({ video, src, layout, model = "lite", perFrame = Infinity }) {
-  if (!video) {
+// `replay` is a recording saved by seats.html (the address's ?replay= when not given): it plays in place of the camera, and
+// no video is made. `pad` is the extra picture each seat's model sees on both sides (seats.js).
+export function createSeatSource({ video, src, layout, model = "lite", perFrame = Infinity, pad, replay = new URLSearchParams(globalThis.location?.search).get("replay") }) {
+  if (!video && !replay) {
     video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
@@ -63,7 +65,8 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     video.addEventListener("pause", () => { if (video.srcObject) video.play().catch(() => {}); });
   }
   const spotIds = layout.spots.map((s) => s.id);
-  const seats = createSeatFeet({ video, slices: makeSlices(layout, saved(EDGES_KEY)), model, perFrame });
+  const slices = makeSlices(layout, saved(EDGES_KEY), saved(slicesKey(layout.spots.length)));
+  let seats = replay ? null : createSeatFeet({ video, slices, model, perFrame, pad });
   const taps = createTapDetector();
   let stream = null;
   let started = null;
@@ -92,18 +95,19 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   }
 
   function stop() {
-    seats.stop();
+    seats?.stop();
     stream?.getTracks().forEach((t) => t.stop());
     stream = started = null;
     tracking = false;
-    video.srcObject = null;
+    if (video) video.srcObject = null;
   }
 
   return {
     // Safe to call more than once. After a failure it tries again.
     start() {
       started ??= (async () => {
-        await open();
+        if (replay) seats = createReplayFeet({ recording: await loadSeatRecording(replay) });
+        else await open();
         const delegate = await seats.start();
         tracking = true;
         return delegate;
@@ -111,12 +115,12 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       return started;
     },
     stop,
-    fps: () => Math.min(...seats.fps()), // the slowest seat's frames a second
+    fps: () => Math.min(...(seats?.fps() ?? [0])), // the slowest seat's frames a second
     ready: () => ({ camera: tracking, calibrated: true }), // no field map is needed: each foot is placed by its seat
     // lanes: { [spotId]: lanes in that pad now }, from the session
     bySpot(lanes) {
       const swapped = saved(SWAP_KEY);
-      return padFeet(taps.update(performance.now(), seats.read()).feet, spotIds, Array.isArray(swapped) ? swapped : [], lanes);
+      return padFeet(taps.update(performance.now(), seats?.read() ?? [], lanes).feet, spotIds, Array.isArray(swapped) ? swapped : [], lanes);
     },
   };
 }

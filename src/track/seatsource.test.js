@@ -109,3 +109,19 @@ test("one lane: one foot lifting and landing while the other stays down is an ar
   }
   assert.equal(hits.length, 1, JSON.stringify(hits));
 });
+
+test("one lane with the seat-mode detector: feet that swap names every frame play nothing until one really lifts and lands", () => {
+  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.5 }] };
+  const game = createGame({ song, lanes: 1 });
+  const detector = createTapDetector();
+  const hits = [];
+  for (let t = 0; t <= 6000; t += 33) {
+    const up = t >= 2500 && t < 3000 ? 0.09 : 0; // the lower foot rises past the other
+    const ys = [0.8, 0.84 - up];
+    const names = (t / 33) % 2 ? [1, 0] : [0, 1]; // names flip on every frame
+    const feet = ys.map((y, i) => ({ spotId: 1, foot: names[i], x: 0.3 + 0.1 * i, y, shin: 0.2 }));
+    const pad = padFeet(detector.update(t, feet, { 1: 1 }).feet, [1], [], { 1: 1 })[1];
+    for (const e of game.update(t, pad).events) if (e.type === "hit") hits.push(t);
+  }
+  assert.equal(hits.length, 1, JSON.stringify(hits));
+});
