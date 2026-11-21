@@ -13,23 +13,9 @@
 [data-line="blue"] { --line: var(--line-blue); }
 [data-line="green"] { --line: var(--line-green); }
 
-.lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.line {
-  min-height: 4.5rem;
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-m);
-  background: var(--line);
-  color: var(--line-text, var(--text));
-  font-size: var(--text-lg);
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-  transition: transform var(--dur-1) var(--ease-out), filter var(--dur-1) var(--ease-out);
-}
-.line:active { transform: scale(0.98); }
+/* the line rows (track and train) are in trains.css */
 @media (hover: hover) {
-  .line:hover, .car-cell:hover { filter: brightness(1.12); }
+  .car-cell:hover { filter: brightness(1.12); }
 }
 
 /* the cars of one train in a row, a stripe in the line's colour along the top of each */

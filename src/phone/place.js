@@ -2,6 +2,9 @@
 // This file draws the first two. Both are drawn from nothing the stage sends: the cars are a sample, and
 // every car leads to the one real section. Colours come from the line tokens in tokens.css.
 import "./map.css";
+import { lineRows, seatTrains, chugOff, playOpening } from "./trains.js";
+
+playOpening(); // the app opens with a train, whichever step comes first
 
 const TAP_GUARD_MS = 400; // a double tap on one step must not land on the next
 const CHEVRON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -20,9 +23,10 @@ export const LINES = [
 export const lineById = (id) => LINES.find((l) => l.id === id) ?? null;
 export const lineLabel = (l) => (l.key === "green" ? `Green Line ${l.name.slice(-1)}` : `${l.name} Line`);
 
-function mount(screen, html, onTap) {
+function mount(screen, html, onTap, arrive) {
   const el = document.createElement("section");
   el.className = "place";
+  if (arrive) el.dataset.arrive = "";
   el.innerHTML = html;
   const shownAt = Date.now();
   el.addEventListener("click", (e) => {
@@ -35,15 +39,16 @@ function mount(screen, html, onTap) {
 
 // Step one, and the first thing a stranger sees: what this is, then which line.
 export function mountLine({ screen, onPick }) {
-  mount(screen, `
+  const el = mount(screen, `
     <div><h1 class="title">A piano on the floor.</h1><p class="sub">You play it with your feet.</p></div>
     <h2 class="ask">Which line are you on?</h2>
-    <div class="lines">
-      ${LINES.map((l) => `<button class="line" type="button" data-line="${l.key}" data-id="${l.id}">${l.name}</button>`).join("")}
-    </div>`, (e) => {
-    const id = e.target.closest("[data-id]")?.dataset.id;
-    if (id) onPick(lineById(id));
+    <div class="lines">${lineRows(LINES)}</div>`, (e) => {
+    const row = e.target.closest("[data-id]");
+    if (!row || el.dataset.going) return; // a second tap while the train is leaving does nothing
+    el.dataset.going = "";
+    chugOff(row).then(() => onPick(lineById(row.dataset.id)));
   });
+  seatTrains(el);
 }
 
 // Step two: the cars of a train on that line, in a row. Tap yours.
@@ -57,5 +62,5 @@ export function mountCar({ screen, line, onPick }) {
     <p class="hint">Only one section has a projector tonight. Any car leads to it.</p>`, (e) => {
     const n = e.target.closest("[data-car]")?.dataset.car;
     if (n) onPick(Number(n));
-  });
+  }, true);
 }
