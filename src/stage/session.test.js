@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { createSession, trainFromAddress, trainQuery, DEFAULT_TRAIN, COUNTDOWN_MS, RESULTS_MS } from "./session.js";
 import { makeLayout } from "./layout.js";
 import { TRAVEL_MS, gradeFor } from "../game/engine.js";
-import { splitParts } from "../game/parts.js";
+import { splitParts, lanesInPad } from "../game/parts.js";
 
-// 120 bpm, taps at 0, 500 and 1000 ms, song length 1.5 s. With 2 seats (4 lanes) each note takes a third of the
-// keyboard: seat 1 plays the first two notes (lanes 0 and 1) and seat 2 the last (lane 3, its lane 1).
+// 120 bpm, taps at 0, 500 and 1000 ms, song length 1.5 s. With 2 seats (one lane each) the notes take a third of
+// the keyboard each: seat 1 plays the first two notes and seat 2 the last, all on lane 0.
 const tiny = { id: "tiny", title: "Tiny Tune", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 1 }, { beat: 1, midi: 64, beats: 1 }, { beat: 2, midi: 67, beats: 1 }] };
 const other = { id: "other", title: "Other Tune", bpm: 120, notes: [{ beat: 0, midi: 62, beats: 1 }, { beat: 1, midi: 65, beats: 1 }] };
-// Eight different pitches, half a second apart: with 3 seats (6 lanes) the seats get 3, 2 and 3 notes.
+// Eight different pitches, half a second apart: with 3 seats (3 lanes) the seats get 3, 2 and 3 notes.
 const scale = { id: "scale", title: "Scale", bpm: 120, notes: [60, 62, 64, 65, 67, 69, 71, 72].map((midi, beat) => ({ beat, midi, beats: 1 })) };
 // A long song: 32 notes of half a second over four pitches, 16 s long. Two seats get 16 notes each.
 const long = { id: "long", title: "Long Tune", bpm: 120, notes: Array.from({ length: 32 }, (_, i) => ({ beat: i, midi: [60, 62, 64, 65][i % 4], beats: 1 })) };
@@ -27,7 +27,7 @@ const play = (song, taken, stepping = taken, base = 0) => {
       if (!stepping.includes(id)) return;
       for (const n of parts[i].notes) {
         const d = wall - (base + START + n.beat * beatMs);
-        if (d >= 0 && d < 100) (feet[id] ??= []).push({ u: (n.lane + 0.5) / 2, v: 0.9 });
+        if (d >= 0 && d < 100) (feet[id] ??= []).push({ u: (n.lane + 0.5) / lanesInPad(taken.length), v: 0.9 });
       }
     });
     return feet;
@@ -123,8 +123,68 @@ test("one phone can hold three seats, and all three play the song at the same ti
   assert.equal(s.snapshot(0).status, "countdown");
   assert.deepEqual(s.snapshot(0).players.map((p) => p.total), [3, 2, 3]);
   const view = run(s, 0, START);
-  assert.deepEqual(view.pads.map((p) => [p.spotId, p.lanes]), [[1, 2], [2, 2], [3, 2]]); // 3 pads of 2 lanes each
+  assert.deepEqual(view.pads.map((p) => [p.spotId, p.lanes]), [[1, 1], [2, 1], [3, 1]]); // 3 pads of 1 lane each
+  assert.equal(s.snapshot(0).layout.lanes, 1);
   assert.ok(view.pads.every((p) => p.tiles.length > 0), "every pad has tiles at once");
+});
+
+// A session with Ann holding seats 1 to n (the layout grows to n pads when n is over 3).
+function seated(n) {
+  const s = createSession({ songs });
+  s.apply({ type: "join", clientId: "ann" }, 0);
+  if (n > 3) s.apply({ type: "layout", clientId: "ann", seats: 4 }, 0);
+  for (let spotId = 1; spotId <= n; spotId++) s.apply({ type: "claim", clientId: "ann", spotId }, 0);
+  return s;
+}
+
+test("the State's layout.lanes follows the seats taken in the lobby: 2 for none or one, 1 for two or more", () => {
+  const lanes = [0, 1, 2, 3, 4].map((n) => seated(n).snapshot(0).layout.lanes);
+  assert.deepEqual(lanes, [2, 2, 1, 1, 1]);
+  const s = seated(1);
+  s.apply({ type: "join", clientId: "ben" }, 0);
+  s.apply({ type: "claim", clientId: "ben", spotId: 2 }, 0);
+  assert.equal(s.snapshot(0).layout.lanes, 1);
+  s.apply({ type: "release", clientId: "ben", spotId: 2 }, 0);
+  assert.equal(s.snapshot(0).layout.lanes, 2, "back to one seat, back to 2 lanes");
+});
+
+test("each engine gets the lane count for the seats taken when the song starts, and every note is on that pad", () => {
+  for (const [n, lanes] of [[1, 2], [2, 1], [3, 1], [4, 1]]) {
+    const s = seated(n);
+    start(s, ["scale"]);
+    const view = run(s, 0, START);
+    assert.deepEqual(view.pads.map((p) => p.lanes), Array(n).fill(lanes), `${n} seats`);
+    assert.equal(s.snapshot(START).layout.lanes, lanes);
+    assert.ok(view.pads.every((p) => p.tiles.length > 0 && p.tiles.every((t) => t.lane < lanes)), `${n} seats: a tile on every pad, inside its lanes`);
+  }
+});
+
+test("the lane count is held for the song when a seat is released part way, and for the next song it is read again", () => {
+  const s = seated(2);
+  start(s, ["long", "long"]);
+  run(s, 0, START);
+  s.apply({ type: "release", clientId: "ann", spotId: 2 }, START); // one seat is left, but the song keeps 1 lane
+  const view = s.tick(START + 20, {});
+  assert.deepEqual(view.pads.map((p) => [p.spotId, p.lanes]), [[1, 1]]);
+  assert.equal(s.snapshot(START + 20).layout.lanes, 1);
+  const end = START + 20 + 16500; // the song is 16 s long
+  assert.equal(run(s, START + 20, end).status, "results");
+  const next = run(s, end, end + RESULTS_MS + 100);
+  assert.equal(next.status, "countdown");
+  assert.deepEqual(next.pads.map((p) => [p.spotId, p.lanes]), [[1, 2]], "one seat, 2 lanes again, read at the next song's start");
+});
+
+test("in a 1-lane pad either foot landing is a tap; in a 2-lane pad foot 0 is lane 0 and foot 1 is lane 1", () => {
+  const hitsWith = (n, u) => {
+    const s = seated(n);
+    start(s, ["tiny"]);
+    // seat 1 plays the first note of the song at its time, with one foot landing at u (pad coordinates)
+    run(s, 0, START + 300, (t) => (t >= START - 20 && t < START + 100 ? { 1: [{ u, v: 0.9 }] } : {}));
+    return player(s, 1, START + 300).counts;
+  };
+  for (const u of [0.25, 0.75]) assert.equal(hitsWith(2, u).perfect, 1, `2 seats, foot at ${u}`);
+  assert.equal(hitsWith(1, 0.25).perfect, 1, "a lone seat's first note is lane 0: foot 0");
+  assert.equal(hitsWith(1, 0.75).perfect, 0, "a lone seat's foot 1 is lane 1, which is the wrong lane for it");
 });
 
 test("with 1, 2, 3 and 4 seats every note of a song is played by exactly one seat", () => {
@@ -206,7 +266,7 @@ test("layout: changes the pads, frees seats that no longer exist, refused while 
   s.apply({ type: "layout", clientId: "ann", seats: 2 }, 0);
   const snap = s.snapshot(0);
   assert.equal(snap.layout.spots.length, 2);
-  assert.equal(snap.layout.lanes, 2);
+  assert.equal(snap.layout.lanes, 1); // two seats are taken
   assert.equal("posture" in snap.layout, false);
   assert.deepEqual(seatsOf(s), [["ann", 1], ["ben", 2]]); // seat 3 is gone
   start(s);

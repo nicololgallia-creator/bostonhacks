@@ -17,21 +17,39 @@ export const TAP_DEFAULTS = {
 
 export function createTapDetector(options = {}) {
   const o = { ...TAP_DEFAULTS, ...options };
-  const tracks = new Map(); // `${spotId}:${foot}` -> { ground, lifted, liftedAt, peak, lastTapAt, seenAt }
+  const tracks = new Map(); // `${spotId}:${foot}` or `${spotId}:seat` -> { ground, lifted, liftedAt, peak, lastTapAt, seenAt, count, lastY }
+
+  // The one signal of a seat with one lane: its highest foot (the smallest y), and how many feet were seen.
+  const highest = (feet) => feet.reduce((best, f) => (f.y < best.y ? f : best));
 
   return {
     // Returns the same feet with `lifted` added, and the taps this frame: [{ spotId, foot, atMs }].
-    update(nowMs, feet) {
+    // `lanes` is { [spotId]: lanes in that pad }, 2 when a seat is not in it. A seat with one lane is one signal: any foot of
+    // it lifting and landing is a tap, so no foot needs a name and names cannot flip. It comes back as one foot (foot 0, the
+    // highest one). A seat with two lanes keeps each foot on its own track.
+    update(nowMs, feet, lanes = {}) {
       const taps = [];
-      const out = feet.map((f) => {
-        const key = `${f.spotId}:${f.foot}`;
+      const bySeat = new Map(); // spotId -> its feet, for the seats with one lane
+      const perFoot = [];
+      for (const f of feet) {
+        if (lanes[f.spotId] !== 1) perFoot.push(f);
+        else bySeat.set(f.spotId, [...(bySeat.get(f.spotId) ?? []), f]);
+      }
+      const singles = [...bySeat.values()].map((fs) => ({ ...highest(fs), foot: 0, seat: fs.length }));
+      const out = [...perFoot, ...singles].map((f) => {
+        const key = `${f.spotId}:${f.seat ? "seat" : f.foot}`;
         let t = tracks.get(key);
         if (!t || nowMs - t.seenAt > o.lostMs) {
-          t = { ground: f.y, lifted: false, liftedAt: 0, peak: 0, lastTapAt: -Infinity, seenAt: nowMs };
+          t = { ground: f.y, lifted: false, liftedAt: 0, peak: 0, lastTapAt: -Infinity, seenAt: nowMs, count: undefined, lastY: f.y };
           tracks.set(key, t);
         }
         const dt = nowMs - t.seenAt;
         t.seenAt = nowMs;
+        // When a foot comes or goes the highest one can change, and the signal jumps without anything lifting. While the
+        // seat is down, the ground moves with the jump, so a foot that dropped out and came back is not read as a lift.
+        if (f.seat !== t.count && t.count !== undefined && !t.lifted) t.ground += f.y - t.lastY;
+        t.count = f.seat;
+        t.lastY = f.y;
 
         // The ground follows the lowest points of the foot (largest y). It eases down fairly fast, so one noisy low
         // frame does not set it, and eases up slowly, and only while the foot is down, so a foot held in the air
@@ -60,7 +78,8 @@ export function createTapDetector(options = {}) {
             }
           }
         }
-        return { ...f, lifted: t.lifted };
+        const { seat, ...foot } = f; // `seat` was only the count of feet, for the line above
+        return { ...foot, lifted: t.lifted };
       });
       return { feet: out, taps };
     },
