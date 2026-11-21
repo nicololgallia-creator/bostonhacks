@@ -22,8 +22,3 @@ more-than-a-feeling.mid
 Source: BitMidi, "More-Than-A-Feeling-1.mid", https://bitmidi.com/more-than-a-feeling-1-mid
 File: https://bitmidi.com/uploads/75502.mid
 Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
-
-seven-nation-army.mid
-Source: BitMidi, "Seven_Nation_Army.mid", https://bitmidi.com/seven_nation_army-mid
-File: https://bitmidi.com/uploads/78491.mid
-Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).

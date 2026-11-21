@@ -17,9 +17,9 @@ import sweetCaroline from "../../songs/sweet-caroline.json" with { type: "json" 
 import shippingUpToBoston from "../../songs/shipping-up-to-boston.json" with { type: "json" };
 import dirtyWater from "../../songs/dirty-water.json" with { type: "json" };
 import moreThanAFeeling from "../../songs/more-than-a-feeling.json" with { type: "json" };
-import sevenNationArmy from "../../songs/seven-nation-army.json" with { type: "json" };
+import takeMeOutToTheBallGame from "../../songs/take-me-out-to-the-ball-game.json" with { type: "json" };
 
-export const songs = [twinkle, maryLamb, rowBoat, happyBirthday, londonBridge, frereJacques, saints, furElise, jingleBells, odeToJoy, ship, greensleeves, sweetCaroline, shippingUpToBoston, dirtyWater, moreThanAFeeling, sevenNationArmy]
+export const songs = [twinkle, maryLamb, rowBoat, happyBirthday, londonBridge, frereJacques, saints, furElise, jingleBells, odeToJoy, ship, greensleeves, sweetCaroline, shippingUpToBoston, dirtyWater, moreThanAFeeling, takeMeOutToTheBallGame]
   .sort((a, b) => songSeconds(a) - songSeconds(b));
 
 export const songById = (id) => songs.find((s) => s.id === id);
