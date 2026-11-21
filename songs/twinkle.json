@@ -1,0 +1,20 @@
+{
+  "id": "twinkle",
+  "title": "Twinkle, Twinkle, Little Star",
+  "by": "Traditional French melody, 1761",
+  "bpm": 100,
+  "notes": [
+    {"beat": 0, "midi": 60, "beats": 1}, {"beat": 1, "midi": 60, "beats": 1}, {"beat": 2, "midi": 67, "beats": 1}, {"beat": 3, "midi": 67, "beats": 1},
+    {"beat": 4, "midi": 69, "beats": 1}, {"beat": 5, "midi": 69, "beats": 1}, {"beat": 6, "midi": 67, "beats": 2},
+    {"beat": 8, "midi": 65, "beats": 1}, {"beat": 9, "midi": 65, "beats": 1}, {"beat": 10, "midi": 64, "beats": 1}, {"beat": 11, "midi": 64, "beats": 1},
+    {"beat": 12, "midi": 62, "beats": 1}, {"beat": 13, "midi": 62, "beats": 1}, {"beat": 14, "midi": 60, "beats": 2},
+    {"beat": 16, "midi": 67, "beats": 1}, {"beat": 17, "midi": 67, "beats": 1}, {"beat": 18, "midi": 65, "beats": 1}, {"beat": 19, "midi": 65, "beats": 1},
+    {"beat": 20, "midi": 64, "beats": 1}, {"beat": 21, "midi": 64, "beats": 1}, {"beat": 22, "midi": 62, "beats": 2},
+    {"beat": 24, "midi": 67, "beats": 1}, {"beat": 25, "midi": 67, "beats": 1}, {"beat": 26, "midi": 65, "beats": 1}, {"beat": 27, "midi": 65, "beats": 1},
+    {"beat": 28, "midi": 64, "beats": 1}, {"beat": 29, "midi": 64, "beats": 1}, {"beat": 30, "midi": 62, "beats": 2},
+    {"beat": 32, "midi": 60, "beats": 1}, {"beat": 33, "midi": 60, "beats": 1}, {"beat": 34, "midi": 67, "beats": 1}, {"beat": 35, "midi": 67, "beats": 1},
+    {"beat": 36, "midi": 69, "beats": 1}, {"beat": 37, "midi": 69, "beats": 1}, {"beat": 38, "midi": 67, "beats": 2},
+    {"beat": 40, "midi": 65, "beats": 1}, {"beat": 41, "midi": 65, "beats": 1}, {"beat": 42, "midi": 64, "beats": 1}, {"beat": 43, "midi": 64, "beats": 1},
+    {"beat": 44, "midi": 62, "beats": 1}, {"beat": 45, "midi": 62, "beats": 1}, {"beat": 46, "midi": 60, "beats": 2}
+  ]
+}

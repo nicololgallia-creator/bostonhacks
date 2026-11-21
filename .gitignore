@@ -11,3 +11,6 @@ shots/
 notes/
 .claude/skills/
 .claude/settings.local.json
+
+# Pose model and runtime, fetched by npm install
+public/mediapipe/
