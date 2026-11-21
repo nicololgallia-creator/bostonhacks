@@ -10,11 +10,12 @@ import { createSeatSource, glowFeet } from "../track/seatsource.js";
 import { HIT_V, TRAVEL_MS } from "../game/engine.js";
 import { createSynth } from "../game/synth.js";
 import { createRenderer } from "../game/render.js";
+import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
 import { openLink } from "../link.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
 import { listStops } from "../mbta/api.js";
-import { feetBySpot } from "./layout.js";
+import { feetBySpot, makeLayout } from "./layout.js";
 import { applyKeystone } from "./keystone.js";
 import { openSetup } from "./setup.js";
 
@@ -48,9 +49,12 @@ function saved(key) {
 }
 
 // The train comes from the address (the poster's QR code leads here), else from the last one saved, else the default.
-const session = createSession({ songs, layout: saved(LAYOUT_KEY), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
+// ?seats=1..4 sets the number of seats from the address, for a quick test without the phone or setup.
+const seatsParam = Number(params.get("seats"));
+const session = createSession({ songs, layout: seatsParam >= 1 && seatsParam <= 4 ? makeLayout({ seats: seatsParam }) : saved(LAYOUT_KEY), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
 const synth = createSynth();
-const draw = createRenderer(canvas);
+// The falling-tiles floor (first drawn by Zohayb) is the look while a song plays. ?look=pads brings back the old pads.
+const draw = (params.get("look") === "pads" ? createRenderer : createTileRenderer)(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
 let appliedVolume = null;
 const ringing = new Map(); // "spotId:lane" -> the function that stops that held note
@@ -152,7 +156,8 @@ function setup() {
     section: snap.train.atStopName, // setup's "Where is this?" field has no job now; delete these two lines when setup drops it
     setSection: () => true,
     // The pads the setup page dragged. False while a song is playing.
-    setLayout: (layout) => { const ok = session.setLayout(layout); publish(); return ok; },
+    // The seated source gets the same layout, so its slices follow the seats at once.
+    setLayout: (layout) => { const ok = session.setLayout(layout); if (ok) feetSource.setLayout?.(layout); publish(); return ok; },
     isPlaying: () => LIVE.includes(snap.status), // so setup can drop a "song is playing" refusal when the song ends
     setOffset: (ms) => apply({ type: "set", offsetMs: ms }, true),
     onClose: () => { setupHandle = null; applyKeystone(canvas); tellReady(); },
@@ -188,6 +193,7 @@ function frame() {
     songMs: view.songMs,
     song: view.song,
     transit: snap.transit,
+    train: snap.train, // the tiles floor takes the line's colour and names the stop from it
     team: snap.team,
     feet: fieldFeet,
     events,
@@ -220,7 +226,7 @@ if (feetSource instanceof Error) {
   document.getElementById("app").innerHTML = `<p class="error">${feetSource.message}</p>`;
 } else {
   // A camera that will not start opens setup, whose first step says why. Any other failure stops the stage.
-  // Only a source with a picture to line up (the camera map) opens setup; a seated source's reason is shown on the stage.
+  // Only a source with a camera picture (the camera map, or the seats) opens setup; its first step shows the reason and a camera picker.
   feetSource.start().catch((err) => { if (!feetSource.raw) throw err; setup(); }).then(() => {
     tellReady();
     if (demo) {

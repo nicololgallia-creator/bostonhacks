@@ -1,11 +1,11 @@
-// The floor in the falling-tiles look (first drawn by Zohayb, refined in our style): black tiles the width of a lane
+﻿// The floor in the falling-tiles look (first drawn by Zohayb, refined in our style): black tiles the width of a lane
 // slide toward the players on a field the colour of the line the train is on. Each seat's lane is drawn at that
 // seat's pad, so the lanes sit at the players' feet. A lone player's pad is two lanes, one for each foot.
 // Same call as render.js: createRenderer(canvas) returns draw(view). Every screen is drawn here: the lobby, the
 // countdown, the song's title, playing, paused and the results. Flat shapes only, no shadowBlur, nothing built per frame.
 import { HIT_V, ZONE_V } from "./engine.js";
-import { INK, WHITE, GOLD, themeFor, seatOf, loadFonts, createKit, easeOut, spring } from "./floor-look.js";
-import { createScreens, drawChip, HUD_BOTTOM } from "./floor-screens.js";
+import { INK, WHITE, GOLD, themeFor, seatOf, loadFonts, createKit, easeOut, easeIn, spring } from "./floor-look.js";
+import { createScreens, drawBadge, drawLaneZone, laneGap, HUD_BOTTOM } from "./floor-screens.js";
 
 const TAP_H = 0.2; // a tap tile's length, as a share of its pad's length
 const GAP_V = 0.012; // the field left between two tiles that follow each other in a lane
@@ -100,7 +100,7 @@ export function createRenderer(canvas) {
     const yLine = yBase + HIT_V * ph;
     const bottom = yBase + ph;
     const n = Math.max(1, pad.lanes | 0);
-    const gapX = n > 1 ? 36 * U : 0;
+    const gapX = laneGap(kit, n);
     const laneW = (pw - gapX * (n - 1)) / n;
     const seat = seatOf(th, pad.spotId);
 
@@ -128,8 +128,7 @@ export function createRenderer(canvas) {
       ctx.fill();
       ctx.save();
       ctx.clip();
-      ctx.fillStyle = lit & (1 << i) ? seat.fill : th.platform;
-      ctx.fillRect(x, yLine, laneW, bottom - yLine);
+      drawLaneZone(kit, th, x, laneW, yLine, bottom, n, i, lit & (1 << i) ? seat.fill : null, false);
       ctx.fillStyle = th.sleeper;
       for (let y = top - sleeperGap + scroll; y < yLine; y += sleeperGap) ctx.fillRect(x + 10 * U, y, laneW - 20 * U, 6 * U);
       ctx.fillStyle = th.rail;
@@ -162,26 +161,23 @@ export function createRenderer(canvas) {
       else if (missAge < FLASH_MS) { ctx.globalAlpha = 0.4 * (1 - missAge / FLASH_MS); ctx.fillStyle = INK; ctx.fillRect(x, yLine, laneW, bottom - yLine); }
       ctx.globalAlpha = 1;
       ctx.restore();
-      if (n === 2) kit.text(i ? "Right foot" : "Left foot", x + laneW / 2, yLine + H * 0.07, H * 0.06, INK, true, "center", laneW - 24 * U);
 
       // What the floor made of the last step in this lane: a word on a plate above the line.
       const wordAge = now - wordAt[s];
       if (wordAge < WORD_MS) {
         const g = wordGrade[s];
-        const k = 1 + 0.25 * Math.max(0, 1 - wordAge / 120);
+        const k = (1 + 0.25 * Math.max(0, 1 - wordAge / 120)) * (1 - easeIn((wordAge - 520) / (WORD_MS - 520))); // pops in, then shrinks away
         const w = wordW[g] * k;
         const h = H * 0.08 * k;
         const cy = yLine - H * 0.1 - easeOut(wordAge / 400) * H * 0.03;
-        ctx.globalAlpha = wordAge < 500 ? 1 : 1 - (wordAge - 500) / (WORD_MS - 500);
         kit.plate(x + laneW / 2 - w / 2, cy - h / 2, w, h, h / 2, g === 1 ? GOLD : g === 2 ? WHITE : th.dull);
         kit.text(WORDS[g], x + laneW / 2, cy + 2 * U, H * 0.06 * k, g === 3 ? WHITE : INK);
-        ctx.globalAlpha = 1;
       }
       ctx.restore();
     }
 
-    // Whose lane it is, at the players' edge, in the seat's colour; white while a foot is down.
-    drawChip(kit, th, pad.spotId, px + pw / 2, bottom - H * 0.05, pw - 16 * U, lit ? WHITE : undefined);
+    // Whose feet these are: the player's number among the footprints, in the seat's colour.
+    drawBadge(kit, th, pad.spotId, px + pw / 2, (yLine + bottom) / 2 + 4 * U, false);
 
     // The floor sees each foot that is down: a ring in the seat's colour, where the foot is.
     for (let k = 0; k < pad.feet.length; k++) {

@@ -7,6 +7,8 @@
 // `stage.feet` is the stage's feet source. A camera source (src/track/tracked.js) gets all six steps. Any other
 // source, like the mouse, skips the two steps that need a camera and is read from the field itself, so a click is
 // a foot arriving. Without a stage source, setup opens its own camera and closes it again.
+// The seated source (src/track/seatsource.js, ?feet=seats) has its own six steps and no camera map: the camera, straighten,
+// the seats on the floor, the seats in the camera (one slice of the picture for each seat), a tap test, and the lag test.
 // `layout` and `offsetMs` are what the stage has now. `setLayout(layout)` returns false when the session refuses
 // it (a song is playing). `setOffset(ms)` saves the lag. `section` is the floor's place name, "Car 2, front", and
 // `setSection(name)` returns false when the session refuses it. `isPlaying()` says whether a song is running, so a
@@ -17,6 +19,8 @@ import "./setup.css";
 import { apply, invert, solve } from "../track/homography.js";
 import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
+import { CAMERA_KEY } from "../track/seatsource.js";
+import { moveBound } from "../track/slices.js";
 import { applyKeystone, loadCalibration, matrix3dFor, saveCalibration } from "./keystone.js";
 import { feetBySpot, asLayout, makeLayout, MAX_SEATS } from "./layout.js";
 import { createArrivals, measureLag } from "./lag.js";
@@ -33,6 +37,10 @@ const BEAT_MS = 600;
 const LEAD_MS = 1500; // before the first click, so the rings show the rhythm
 const SQUARE = { u: 0.5, v: 0.55, size: 0.4 }; // the lag test's square: centre, and its height as a share of the field
 const seatNumber = (id) => ((id - 1) % MAX_SEATS) + 1; // there are four seat colours
+const SWAP_KEY = "pp:seat-swap"; // pad ids whose two feet are mirrored (seatsource.js reads it on every frame)
+const TAPS_NEEDED = 3; // taps each seat makes in the tap test
+const FLASH_MS = 250;
+const HOLD_MS = 1500; // a seat that was found a moment ago still counts: the tracker drops a frame now and then
 
 const el = (tag, className, text) => {
   const e = document.createElement(tag);
@@ -47,6 +55,15 @@ const button = (label, className, onClick) => {
   return b;
 };
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
+const placeRect = (pad, rect) => {
+  pad.style.left = `${rect.u * 100}%`;
+  pad.style.top = `${rect.v * 100}%`;
+  pad.style.width = `${rect.w * 100}%`;
+  pad.style.height = `${rect.h * 100}%`;
+};
+const savedList = (key) => { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : []; } catch { return []; } };
+const lanesIn = (layout) => (layout.spots.length === 1 ? 2 : 1); // the lanes in a pad when every seat plays (Wave 7)
+const colour = (id) => `var(--seat-${seatNumber(id)})`;
 
 let isOpen = false;
 
@@ -131,6 +148,7 @@ function drawOutline(g, outline, bright, edge) {
 export function openSetup({ stage, layout: startLayout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose }) {
   if (isOpen) return;
   isOpen = true;
+  const seated = !!stage?.feet?.bySpot; // seated play: the picture is cut into one slice for each seat
   const camera = !stage?.feet || !!stage.feet.raw; // the mouse and other stand-ins have no camera to set up
   const feet = camera ? (stage?.feet ?? createTrackedFeet()) : null;
   const own = camera && feet !== stage?.feet;
@@ -165,6 +183,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   document.body.append(root);
 
   const css = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+  let current = asLayout(startLayout) ?? makeLayout({ seats: 3 }); // the seats as they are now, kept up to date by the seats step
   let index = 0;
   let cleanup = null;
   let keyHandler = null;
@@ -199,26 +218,34 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     // A second video shows the same camera stream. The tracker's own video must never be moved:
     // taking it off the page pauses it, and the camera then hands out one stale frame.
     let preview = null;
-    if (feet.video) {
+    const v = feet.video;
+    if (v?.tagName === "IMG") { // a seated test on a still picture
+      preview = el("img");
+      preview.src = v.src;
+      preview.alt = "";
+    } else if (v) {
       preview = el("video");
       preview.muted = true;
       preview.playsInline = true;
       preview.autoplay = true;
-      preview.srcObject = feet.video.srcObject;
-      box.append(preview);
+      preview.srcObject = v.srcObject ?? v.captureStream?.() ?? null; // a video file has no stream of its own: capture what it plays
     }
+    if (preview) box.append(preview);
     box.append(canvas);
-    const ratio = () => (feet.video?.videoWidth ? feet.video.videoWidth / feet.video.videoHeight : 16 / 9);
+    const ratio = () => (v?.videoWidth ? v.videoWidth / v.videoHeight : v?.naturalWidth ? v.naturalWidth / v.naturalHeight : 16 / 9);
     return {
       box,
-      // list: camera feet [{ x, y, off }], 0 to 1. A foot with `off` is outside the field. outline: the field's four corners.
-      draw(list, outline) {
-        if (preview && preview.srcObject !== feet.video.srcObject) preview.srcObject = feet.video.srcObject; // the camera was changed
+      // list: camera feet [{ x, y, off, color }], 0 to 1. A foot with `off` is outside the field. outline: the field's four corners.
+      // under(g, w, h) draws first, below the dots.
+      draw(list, outline, under) {
+        const live = v?.srcObject;
+        if (preview && live && preview.srcObject !== live) preview.srcObject = live; // the camera was changed
         box.style.setProperty("--ar", ratio());
         const w = box.clientWidth, h = box.clientHeight;
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
         const g = canvas.getContext("2d");
         g.clearRect(0, 0, w, h);
+        under?.(g, w, h);
         if (outline) drawOutline(g, outline, css("--text"), css("--seat-1"));
         const r = Math.max(6, w * 0.012);
         g.lineWidth = 3;
@@ -227,7 +254,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
           g.arc(p.x * w, p.y * h, r, 0, 7);
           g.strokeStyle = "#000";
           if (p.off) { g.lineWidth = 7; g.stroke(); g.lineWidth = 4; g.strokeStyle = css("--seat-2"); g.stroke(); } // a hollow ring
-          else { g.fillStyle = css("--seat-3"); g.fill(); g.lineWidth = 3; g.stroke(); }
+          else { g.fillStyle = p.color ?? css("--seat-3"); g.fill(); g.lineWidth = 3; g.stroke(); }
         }
       },
     };
@@ -252,7 +279,9 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   function cameraStep() {
     const pic = picture();
     layer.append(pic.box);
-    ctx.say("Pick the camera that looks at the floor. Stand in its view: a yellow dot should sit on each shoe.");
+    ctx.say(seated
+      ? "Pick the camera that faces the seats. Every player should show from head to shoes, with a dot on each foot."
+      : "Pick the camera that looks at the floor. Stand in its view: a yellow dot should sit on each shoe.");
     const select = el("select", "setup-select");
     select.setAttribute("aria-label", "Camera");
     select.hidden = true;
@@ -260,21 +289,22 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     let alive = true;
     let failed = false; // the camera did not start, and the error says why
     starting.then(async () => {
-      if (!alive || !feet.video) return;
-      const current = loadCalibration().cameraId;
+      if (!alive || !feet.video || (seated && feet.kind !== "camera")) return; // a file or a recording has no camera to pick
+      const chosen = seated ? feet.video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId : loadCalibration().cameraId;
       const cameras = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
-      select.replaceChildren(...cameras.map((d, i) => new Option(d.label || `Camera ${i + 1}`, d.deviceId, false, d.deviceId === current)));
+      select.replaceChildren(...cameras.map((d, i) => new Option(d.label || `Camera ${i + 1}`, d.deviceId, false, d.deviceId === chosen)));
       select.hidden = false;
     }).catch((e) => { failed = true; if (alive) ctx.error(e.message); });
     select.addEventListener("change", async () => {
-      saveCalibration({ cameraId: select.value, cameraToField: null }); // a map made for another camera does not fit this one
+      if (seated) localStorage.setItem(CAMERA_KEY, select.value); // seats.html reads the same key
+      else saveCalibration({ cameraId: select.value, cameraToField: null }); // a map made for another camera does not fit this one
       ctx.error("");
       try { await feet.reload(); } catch (e) { ctx.error(e.message); }
     });
 
     let frame = 0;
     const tick = () => {
-      feet.read(); // pulls the next camera frame when the stage is not doing it
+      feet.read?.(); // pulls the next camera frame when the stage is not doing it (the seated source is only read by the stage)
       const seen = feet.raw();
       pic.draw(seen, null);
       const working = feet.ready().camera && feet.fps() > 0;
@@ -315,7 +345,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       try { matrix3dFor(corners, innerWidth, innerHeight); } catch (e) { ctx.error(e.message); return; }
       ctx.error("");
       saveCalibration({ corners, cameraToField: null }); // the camera's map was made for the old shape
-      feet?.reload();
+      if (!seated) feet?.reload(); // the seated source has no map to rebuild, and a reload would restart its camera on every drag
       applyKeystone(field);
       place();
     }
@@ -486,7 +516,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   }
 
   function seatsStep() {
-    let layout = asLayout(startLayout) ?? makeLayout({ seats: 3 });
+    let layout = current;
     const field = el("div", "setup-field is-quiet");
     const pads = el("div", "setup-pads");
     const canvas = el("canvas");
@@ -495,7 +525,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     field.append(pads, canvas);
     layer.append(field);
     applyKeystone(field);
-    ctx.say("Drag each pad until it sits at the feet of its seat.");
+    ctx.say(seated ? "Pick how many seats, then drag each pad until it sits at the feet of its seat." : "Drag each pad until it sits at the feet of its seat.");
     ctx.next(true);
 
     // Every change goes to the stage first. Only what the stage accepts is drawn. A refusal stays until the
@@ -509,7 +539,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       }
       refused = false;
       ctx.error("");
-      layout = next;
+      layout = current = next;
       return true;
     }
     const withRect = (id, rect) => ({ ...layout, spots: layout.spots.map((s) => (s.id === id ? { ...s, rect } : s)) });
@@ -519,12 +549,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       h = Math.min(1, Math.max(MIN_PAD, h));
       return { u: Math.min(1 - w, Math.max(0, u)), v: Math.min(1 - h, Math.max(0, v)), w, h };
     };
-    const place = (pad, rect) => {
-      pad.style.left = `${rect.u * 100}%`;
-      pad.style.top = `${rect.v * 100}%`;
-      pad.style.width = `${rect.w * 100}%`;
-      pad.style.height = `${rect.h * 100}%`;
-    };
+    const place = placeRect;
     const rectOf = (id) => layout.spots.find((s) => s.id === id).rect;
     function drag(e, onMove) {
       e.preventDefault(); // no text selection while dragging
@@ -544,7 +569,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
         pad.setAttribute("role", "group");
         pad.setAttribute("aria-label", `Seat ${spot.id} pad. Arrow keys move it.`);
         const lanes = el("div", "setup-lanes");
-        lanes.append(...Array.from({ length: layout.lanes }, () => el("i", "setup-lane")));
+        lanes.append(...Array.from({ length: seated ? lanesIn(layout) : layout.lanes }, () => el("i", "setup-lane"))); // seated: one lane each, two for a lone player
         const grip = el("button", "setup-grip");
         grip.type = "button";
         grip.setAttribute("aria-label", `Resize seat ${spot.id}. Arrow keys change its size.`);
@@ -610,29 +635,207 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     where.addEventListener("input", () => ctx.error(setSection(where.value) ? "" : "Type where this is, in 30 letters or fewer."));
     controls.replaceChildren(
       options("Seats", [...countButtons.map((x) => x.b), even]),
-      options("Where is this?", [where]),
+      ...(seated ? [] : [options("Where is this?", [where])]), // nothing on the floor shows the place name now
     );
     build();
     mark();
 
     const g = canvas.getContext("2d");
     const glow = css("--seat-3"), offColor = css("--seat-2");
-    const src = source(field);
-    const drawCamera = camera ? miniCamera() : null;
+    const src = seated ? null : source(field); // seated pads are placed by hand: no feet are shown on the floor here
+    const drawCamera = camera && !seated ? miniCamera() : null;
     let frame = 0;
     const tick = () => {
       if (refused && !isPlaying?.()) { refused = false; ctx.error(""); } // the song has ended, so the refusal no longer holds
-      const list = src.read();
-      drawFeet(g, list, glow, offColor);
-      drawCamera?.();
-      const inside = Object.values(feetBySpot(layout, list)).flat().length;
-      ctx.meta(`${list.length} ${list.length === 1 ? "foot" : "feet"} seen, ${inside} inside a pad.`);
+      if (src) {
+        const list = src.read();
+        drawFeet(g, list, glow, offColor);
+        drawCamera?.();
+        const inside = Object.values(feetBySpot(layout, list)).flat().length;
+        ctx.meta(`${list.length} ${list.length === 1 ? "foot" : "feet"} seen, ${inside} inside a pad.`);
+      }
       frame = requestAnimationFrame(tick);
     };
-    if (camera && !feet.ready().calibrated) ctx.error("The camera is not lined up with the field yet, so no feet show. Go back to the step where you click the four marks.");
+    if (camera && !seated && !feet.ready().calibrated) ctx.error("The camera is not lined up with the field yet, so no feet show. Go back to the step where you click the four marks.");
     tick();
     return () => cancelAnimationFrame(frame);
   }
+
+  // Seated play, step 4: the camera picture cut into one slice for each seat. Every line can be dragged.
+  function slicesStep() {
+    const pic = picture();
+    layer.append(pic.box);
+    const first = feet.slices();
+    let bounds = [first[0].x0, ...first.map((x) => x.x1)];
+    const fixed = feet.kind === "replay"; // a recording brings its own slices
+    const hint = fixed ? "" : "Arrow keys nudge the last line you touched. Shift moves it further.";
+    ctx.say(fixed ? "This is a recording, so its lines are fixed. Check that every seat finds a person." : "Drag the lines so each player sits in their own slice.");
+
+    // One row for each seat, in the seat's colour: is a person found in its slice, and how many feet.
+    const rows = first.map(({ spotId }) => {
+      const num = el("b", "", String(spotId));
+      num.style.color = colour(spotId);
+      const text = el("span");
+      const row = el("div", "setup-seat");
+      row.append(num, text);
+      return { row, text };
+    });
+    controls.append(...rows.map((r) => r.row));
+
+    let last = null;
+    const touch = (i) => { last = i; handles.forEach((h, j) => h.classList.toggle("is-last", j === i)); };
+    const place = () => handles.forEach((h, i) => { h.style.left = `${bounds[i] * 100}%`; });
+    const move = (i, x) => {
+      bounds = moveBound(bounds, i, x);
+      feet.setSlices(bounds); // the tracker reads the new slices on its next frame, and seats.html reads the saved ones
+      place();
+    };
+    const handles = fixed ? [] : bounds.map((_, i) => {
+      const h = el("button", "setup-divider");
+      h.type = "button";
+      h.setAttribute("aria-label", i === 0 ? "Left edge of the first slice" : i === bounds.length - 1 ? "Right edge of the last slice" : `Line between seat ${first[i - 1].spotId} and seat ${first[i].spotId}`);
+      h.addEventListener("pointerdown", (e) => { h.setPointerCapture(e.pointerId); touch(i); });
+      h.addEventListener("pointermove", (e) => {
+        if (!h.hasPointerCapture(e.pointerId)) return;
+        const r = pic.box.getBoundingClientRect();
+        move(i, (e.clientX - r.left) / r.width);
+      });
+      h.addEventListener("focus", () => touch(i));
+      return h;
+    });
+    pic.box.append(...handles);
+    place();
+    ctx.keys((e) => {
+      const d = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (!d || last === null) return;
+      e.preventDefault();
+      move(last, bounds[last] + d * (e.shiftKey ? 0.05 : 0.005));
+    });
+
+    // The slices, each in its seat's colour with its number, under the dots.
+    const under = (g, w, h, slices) => {
+      g.textAlign = "center";
+      g.textBaseline = "top";
+      g.font = `800 ${Math.round(h * 0.11)}px ${css("--font")}`;
+      g.lineWidth = 6;
+      g.strokeStyle = "#000";
+      for (const sl of slices) {
+        const c = css(`--seat-${seatNumber(sl.spotId)}`);
+        g.globalAlpha = 0.2;
+        g.fillStyle = c;
+        g.fillRect(sl.x0 * w, 0, (sl.x1 - sl.x0) * w, h);
+        g.globalAlpha = 1;
+        g.fillStyle = c;
+        const cx = ((sl.x0 + sl.x1) / 2) * w;
+        g.strokeText(String(sl.spotId), cx, h * 0.03);
+        g.fillText(String(sl.spotId), cx, h * 0.03);
+      }
+    };
+
+    let goodAt = -Infinity;
+    let frame = 0;
+    const tick = (now) => {
+      const slices = feet.slices(), poses = feet.poses();
+      const dots = feet.raw().map((f) => ({ x: f.x, y: f.y, color: css(`--seat-${seatNumber(f.spotId)}`) }));
+      pic.draw(dots, null, (g, w, h) => under(g, w, h, slices));
+      let every = true;
+      slices.forEach((sl, i) => {
+        const pose = poses.find((q) => q.spotId === sl.spotId);
+        const n = pose?.feet.length ?? 0;
+        const found = !!pose && !pose.dropped && (pose.hipX !== null || pose.landmarks.length > 0);
+        const ok = found && n > 0;
+        every &&= ok;
+        rows[i].row.classList.toggle("is-ok", ok);
+        rows[i].text.textContent = pose?.dropped ? "Someone from a neighbouring seat shows here. Move the line off them."
+          : !found ? "No person found."
+          : `Person found, ${n} ${n === 1 ? "foot" : "feet"}.${n ? "" : " The shoes are not in view."}`;
+      });
+      if (every) goodAt = now;
+      ctx.next(now - goodAt < HOLD_MS);
+      ctx.meta(feet.ready().camera ? `${hint} ${feet.fps()} frames a second.`.trim() : "Loading the pose model for the seats...");
+      frame = requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }
+
+  // Seated play, step 5: each lane on the floor, large, with its player's number. A tap flashes the player's own lane.
+  function tapStep() {
+    const field = el("div", "setup-field is-quiet");
+    const pads = el("div", "setup-pads");
+    field.append(pads);
+    layer.append(field);
+    applyKeystone(field);
+    const seats = current.spots;
+    const lone = lanesIn(current) === 2; // a lone player has two lanes, one for each foot. With more players each has one lane.
+    const hint = lone ? "Tap with your left foot. If the right lane flashes, press Swap feet. " : "";
+    ctx.say("Everyone tap. Your own lane should flash.");
+
+    const base = Object.fromEntries(seats.map((sp) => [sp.id, feet.taps()[sp.id]?.count ?? 0]));
+    const shown = { ...base };
+    const cards = seats.map((spot) => {
+      const pad = el("div", "setup-pad is-tap");
+      pad.style.setProperty("--seat", colour(spot.id));
+      pad.style.setProperty("--dim", `var(--seat-${seatNumber(spot.id)}-dim)`);
+      const lanes = el("div", "setup-lanes");
+      const laneEls = Array.from({ length: lanesIn(current) }, (_, i) => el("i", "setup-lane", lone ? ["Left foot", "Right foot"][i] : ""));
+      lanes.append(...laneEls);
+      const count = el("span", "setup-tap-count");
+      pad.append(lanes, el("span", "setup-pad-num", String(spot.id)), count);
+      placeRect(pad, spot.rect);
+      pads.append(pad);
+      return { pad, laneEls, count, id: spot.id };
+    });
+
+    if (lone) {
+      const id = seats[0].id;
+      const mark = () => swap.setAttribute("aria-pressed", savedList(SWAP_KEY).includes(id));
+      const swap = button("Swap feet", "", () => {
+        const list = savedList(SWAP_KEY);
+        localStorage.setItem(SWAP_KEY, JSON.stringify(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])); // seatsource reads it on its next frame
+        mark();
+      });
+      mark();
+      controls.append(swap);
+    } else {
+      const toLines = button("Back to the lines", "is-primary", () => go(STEPS.findIndex((st) => st.run === slicesStep)));
+      controls.append(button("Another player's lane flashed", "", () => {
+        ctx.error("A tap lit the wrong lane. A line cuts through a player, so their feet are counted in a neighbour's slice. Go back and drag the lines so each player sits in their own slice.");
+        if (!toLines.isConnected) controls.append(toLines);
+      }));
+    }
+
+    const timers = [];
+    let frame = 0;
+    const tick = () => {
+      const log = feet.taps();
+      const waiting = [];
+      for (const c of cards) {
+        const t = log[c.id];
+        const count = t?.count ?? 0;
+        if (count < base[c.id]) base[c.id] = shown[c.id] = count; // the tracker was rebuilt: count again
+        if (count > shown[c.id]) {
+          const lane = c.laneEls[lone ? t.lane : 0];
+          lane.classList.add("is-flash");
+          timers.push(setTimeout(() => lane.classList.remove("is-flash"), FLASH_MS));
+        }
+        shown[c.id] = count;
+        const n = Math.min(TAPS_NEEDED, count - base[c.id]);
+        c.count.textContent = `${n} of ${TAPS_NEEDED}`;
+        c.pad.classList.toggle("is-done", n >= TAPS_NEEDED);
+        if (n < TAPS_NEEDED) waiting.push(c.id);
+      }
+      const all = !waiting.length;
+      ctx.next(all);
+      if (all) ctx.say("Every seat tapped three times. Press Next.");
+      ctx.meta(all ? "" : !feet.ready().camera ? "Loading the pose model for the seats..." : `${hint}Waiting for ${waiting.length === 1 ? "seat" : "seats"} ${waiting.join(", ")}.`);
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { cancelAnimationFrame(frame); timers.forEach(clearTimeout); };
+  }
+
+  const totalTaps = () => Object.values(feet.taps()).reduce((sum, t) => sum + t.count, 0);
 
   function lagStep() {
     const field = el("div", "setup-field is-quiet");
@@ -643,12 +846,14 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     layer.append(field);
     applyKeystone(field);
     const g = canvas.getContext("2d");
-    const src = source(field);
+    const src = seated ? null : source(field);
     const arrived = createArrivals();
     const dim = css("--seat-4-dim"), lit = css("--seat-4"), ring = css("--text");
     const start = button("Start the clicks", "is-primary", run);
     controls.append(start, button("Skip", "is-quiet", close));
-    const instruction = "Step onto the square each time you hear a click. There are eight clicks.";
+    const instruction = seated ? "Tap your foot each time you hear a click. There are eight clicks." : "Step onto the square each time you hear a click. There are eight clicks.";
+    const noun = seated ? "tap" : "step";
+    let seenTaps = seated ? totalTaps() : 0; // any seat's taps count
     ctx.say(instruction);
     ctx.meta(offsetMs === undefined ? "" : `The game now waits ${offsetMs} ms for your feet. Skip keeps it.`);
 
@@ -690,11 +895,11 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       start.disabled = false;
       start.textContent = "Try again";
       if (ms === null) {
-        ctx.error(`I only saw ${used} ${used === 1 ? "step" : "steps"}. Stand where the camera sees your feet and try again.`);
+        ctx.error(`I only saw ${used} ${used === 1 ? noun : noun + "s"}. ${seated ? "Tap your foot so the camera sees it lift and land, then try again." : "Stand where the camera sees your feet and try again."}`);
         return;
       }
       setOffset(ms);
-      ctx.say(`You step about ${ms} ms after the click. Saved.`);
+      ctx.say(`You ${noun} about ${ms} ms after the click. Saved.`);
       ctx.meta("");
       ctx.next(true);
     }
@@ -703,8 +908,12 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       const now = performance.now();
       const w = canvas.width, h = canvas.height;
       const half = (SQUARE.size * h) / 2, cx = SQUARE.u * w, cy = SQUARE.v * h;
-      const inSquare = src.read().filter((f) => Math.abs(f.u * w - cx) <= half && Math.abs(f.v * h - cy) <= half).length;
-      const stepped = arrived(now, inSquare);
+      let stepped;
+      if (seated) { // a tap is an arrival
+        const taps = totalTaps();
+        stepped = taps > seenTaps;
+        seenTaps = taps;
+      } else stepped = arrived(now, src.read().filter((f) => Math.abs(f.u * w - cx) <= half && Math.abs(f.v * h - cy) <= half).length);
       if (stepped) flashAt = now;
       if (stepped && beats.length) arrivals.push(now);
       if (beats.length && now > beats[BEATS - 1] + BEAT_MS) finish();
@@ -730,9 +939,17 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     return () => { cancelAnimationFrame(frame); audio?.close(); };
   }
 
-  const STEPS = [
+  // Straighten's corner handles sit at the window's corners, so its panel stays in the centre.
+  const STEPS = seated ? [
+    { name: "Camera", run: cameraStep },
+    { name: "Straighten the picture", run: straightenStep, centre: true },
+    { name: "Seats on the floor", run: seatsStep },
+    { name: "Seats in the camera", run: slicesStep },
+    { name: "Tap test", run: tapStep },
+    { name: "Lag test", run: lagStep },
+  ] : [
     { name: "Camera", run: cameraStep, camera: true },
-    { name: "Straighten the picture", run: straightenStep, centre: true }, // its corner handles sit at the window's corners
+    { name: "Straighten the picture", run: straightenStep, centre: true },
     { name: "Show the camera the field", run: fieldStep, camera: true },
     { name: "Place the seats", run: seatsStep },
     { name: "Foot check", run: footStep },

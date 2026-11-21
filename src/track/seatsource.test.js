@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, glowFeet, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
 import { createTapDetector } from "./taps.js";
 import { makeLayout } from "../stage/layout.js";
 import { createGame } from "../game/engine.js";
@@ -50,6 +50,15 @@ test("pad feet: with one lane both feet are in the middle of it, whatever the sw
   assert.deepEqual(out[1], [{ u: 0.5, v: PAD_V, lifted: false }, { u: 0.5, v: PAD_V, lifted: true }]);
   assert.deepEqual(out[2].map((f) => f.u), [0.25, 0.75]);
   assert.equal(ONE_LANE_U, 0.5);
+});
+
+test("lane of a tap: the foot decides in a two-lane pad, the swap list flips it, and a one-lane pad is always lane 0", () => {
+  assert.equal(laneOf({ spotId: 1, foot: 0 }), 0);
+  assert.equal(laneOf({ spotId: 1, foot: 1 }), 1);
+  assert.equal(laneOf({ spotId: 1, foot: 0 }, [1]), 1);
+  assert.equal(laneOf({ spotId: 1, foot: 1 }, [1]), 0);
+  assert.equal(laneOf({ spotId: 2, foot: 1 }, [1]), 1); // only the pad named in the list is mirrored
+  assert.equal(laneOf({ spotId: 1, foot: 1 }, [1], { 1: 1 }), 0);
 });
 
 test("pad feet: a single foot keeps its lane, a seat that is not in the layout is dropped, a missing lifted is down", () => {

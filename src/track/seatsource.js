@@ -4,9 +4,9 @@
 import { createSeatFeet } from "./seats.js";
 import { createTapDetector } from "./taps.js";
 import { createReplayFeet, loadSeatRecording } from "./seatreplay.js";
-import { EDGES_KEY, boundsFor, slicesKey } from "./slices.js";
+import { EDGES_KEY, boundsFor, slicesKey, writeSaved } from "./slices.js";
 
-const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html
+export const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html and in setup
 const SWAP_KEY = "pp:seat-swap"; // spot ids whose pad is mirrored: [2, 3]
 export const LANE_U = [0.25, 0.75]; // with two lanes (a lone player): foot 0 and foot 1, the middle of each lane
 export const ONE_LANE_U = 0.5; // with one lane (two to four players): both feet play the one lane
@@ -30,11 +30,13 @@ export function padFeet(feet, spotIds, swapped = [], lanes = {}) {
   const out = Object.fromEntries(spotIds.map((id) => [id, []]));
   for (const f of feet) {
     if (!out[f.spotId]) continue;
-    const u = (lanes[f.spotId] ?? 2) === 1 ? ONE_LANE_U : LANE_U[(f.foot === 1) !== swapped.includes(f.spotId) ? 1 : 0];
-    out[f.spotId].push({ u, v: PAD_V, lifted: !!f.lifted });
+    out[f.spotId].push({ u: (lanes[f.spotId] ?? 2) === 1 ? ONE_LANE_U : LANE_U[laneOf(f, swapped, lanes)], v: PAD_V, lifted: !!f.lifted });
   }
   return out;
 }
+
+// The lane a foot (or a tap) plays, 0 or 1, and always 0 in a one-lane pad. A pad in `swapped` is mirrored.
+export const laneOf = ({ spotId, foot }, swapped = [], lanes = {}) => ((lanes[spotId] ?? 2) === 1 ? 0 : (foot === 1) !== swapped.includes(spotId) ? 1 : 0);
 
 // Where the floor draws a foot glow: in the pad's lane, for each foot that is down.
 export function glowFeet(layout, byPad) {
@@ -49,12 +51,13 @@ function cameraReason(e) {
   return e.message;
 }
 
-// `src` is a video file to play instead of the camera. With no `video`, one is made and put on the page for good.
+// `src` is a video file to play instead of the camera, or a picture (jpg, png, webp) that stands in for it. With no `video`, one is made and put on the page for good.
 // `replay` is a recording saved by seats.html (the address's ?replay= when not given): it plays in place of the camera, and
 // no video is made. `pad` is the extra picture each seat's model sees on both sides (seats.js).
 export function createSeatSource({ video, src, layout, model = "lite", perFrame = Infinity, pad, replay = new URLSearchParams(globalThis.location?.search).get("replay") }) {
+  const still = !!src && /\.(jpe?g|png|webp)(\?|$)/i.test(src);
   if (!video && !replay) {
-    video = document.createElement("video");
+    video = still ? new Image() : document.createElement("video");
     video.muted = true;
     video.playsInline = true;
     // The browser pauses a video that is taken off the page, or hidden with display none, and a paused camera hands out
@@ -64,15 +67,21 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     document.body.append(video);
     video.addEventListener("pause", () => { if (video.srcObject) video.play().catch(() => {}); });
   }
-  const spotIds = layout.spots.map((s) => s.id);
-  const slices = makeSlices(layout, saved(EDGES_KEY), saved(slicesKey(layout.spots.length)));
-  let seats = replay ? null : createSeatFeet({ video, slices, model, perFrame, pad });
-  const taps = createTapDetector();
+  let spotIds = layout.spots.map((s) => s.id);
+  let slices = makeSlices(layout, saved(EDGES_KEY), saved(slicesKey(layout.spots.length)));
+  const makeSeats = () => createSeatFeet({ video, slices, model, perFrame, pad });
+  let seats = replay ? null : makeSeats();
+  let taps = createTapDetector();
+  let tapLog = {}; // { [spotId]: { count, lane, at } }: each seat's taps since the tracker started, and the latest one
   let stream = null;
   let started = null;
   let tracking = false;
 
   async function open() {
+    if (still) {
+      video.src = src;
+      return video.decode().catch(() => { throw new Error(`The picture ${src} could not be loaded. Check the address in ?src=.`); });
+    }
     if (src) {
       video.src = src;
       video.loop = true;
@@ -94,6 +103,13 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     }
   }
 
+  // Starts a tracker. It counts as running only while it is still the current one (a new seat count builds another).
+  const begin = (mine) => mine.start().then((delegate) => {
+    if (seats === mine) tracking = true;
+    else mine.stop();
+    return delegate;
+  });
+
   function stop() {
     seats?.stop();
     stream?.getTracks().forEach((t) => t.stop());
@@ -106,11 +122,12 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     // Safe to call more than once. After a failure it tries again.
     start() {
       started ??= (async () => {
-        if (replay) seats = createReplayFeet({ recording: await loadSeatRecording(replay) });
-        else await open();
-        const delegate = await seats.start();
-        tracking = true;
-        return delegate;
+        if (replay) {
+          const recording = await loadSeatRecording(replay);
+          seats = createReplayFeet({ recording });
+          slices = recording.slices.map((s) => ({ ...s })); // the recording's own slices: its lines cannot be moved
+        } else await open();
+        return begin(seats);
       })().catch((e) => { stop(); throw e; });
       return started;
     },
@@ -120,7 +137,47 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     // lanes: { [spotId]: lanes in that pad now }, from the session
     bySpot(lanes) {
       const swapped = saved(SWAP_KEY);
-      return padFeet(taps.update(performance.now(), seats?.read() ?? [], lanes).feet, spotIds, Array.isArray(swapped) ? swapped : [], lanes);
+      const swap = Array.isArray(swapped) ? swapped : [];
+      const { feet, taps: tapped } = taps.update(performance.now(), seats?.read() ?? [], lanes);
+      for (const t of tapped) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs };
+      return padFeet(feet, spotIds, swap, lanes);
+    },
+
+    // What setup needs. None of it runs the tracker: it reads what the stage's own frames already found.
+    video, // the picture the tracker reads (setup shows it with a second one, and never moves this one); none for a recording
+    kind: replay ? "replay" : src ? "file" : "camera", // a file or a recording has no camera to pick
+    raw: () => (seats?.poses() ?? []).flatMap((p) => p.feet), // every foot found, [{ spotId, foot, x, y }], whole-picture units
+    poses: () => seats?.poses() ?? [], // each seat's last result: { spotId, feet, hipX, dropped, landmarks }
+    slices: () => slices.map(({ spotId, x0, x1 }) => ({ spotId, x0, x1 })),
+    taps: () => ({ ...tapLog }),
+    // Reopens the camera chosen in setup, and starts the tracker again if it had failed.
+    reload() {
+      stop();
+      return this.start();
+    },
+    // New dividers (n + 1 shares of the picture's width, rising) take effect at once and are saved for seats.html and the next start.
+    setSlices(bounds) {
+      if (replay || bounds.length !== slices.length + 1) return;
+      slices.forEach((s, i) => { s.x0 = bounds[i]; s.x1 = bounds[i + 1]; });
+      writeSaved(bounds);
+    },
+    // The pads changed. The same seat count only moves the slices (their order is the pads' order on the floor). A new count
+    // builds the tracker again for the new number of slices, which takes a moment.
+    setLayout(next) {
+      spotIds = next.spots.map((s) => s.id);
+      if (replay) return;
+      const fresh = makeSlices(next, saved(EDGES_KEY), saved(slicesKey(next.spots.length)));
+      if (fresh.length === slices.length) {
+        slices.forEach((s, i) => Object.assign(s, fresh[i]));
+        return;
+      }
+      slices = fresh;
+      taps = createTapDetector();
+      tapLog = {};
+      seats.stop();
+      seats = makeSeats();
+      tracking = false;
+      if (started) begin(seats).catch(() => {});
     },
   };
 }

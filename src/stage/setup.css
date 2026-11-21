@@ -23,7 +23,7 @@
   transform: translate(-50%, -50%);
   background: var(--surface-1);
 }
-.setup-pic > video, .setup-pic > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.setup-pic > video, .setup-pic > img, .setup-pic > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .setup-pic.is-clickable { cursor: crosshair; }
 /* The small one, in the panel. */
 .setup-pic.is-mini { position: relative; left: auto; top: auto; width: 100%; transform: none; border-radius: var(--radius-s); overflow: hidden; background: #000; box-shadow: inset 0 0 0 1px var(--surface-3); }
@@ -114,6 +114,67 @@
 .setup-pic .setup-mark { width: 44px; height: 44px; font-size: var(--text-lg); pointer-events: none; }
 /* On the floor, a mark names its corner under its number. */
 .setup-mark small { position: absolute; top: 100%; margin-top: 1vh; color: var(--text); font-size: 3.4vh; font-weight: 600; white-space: nowrap; }
+
+/* The lines between seats' slices, dragged on the camera picture (seated play, step 4). */
+.setup-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  margin-left: -14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.setup-divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; margin-left: -2px; background: var(--text); box-shadow: 0 0 0 2px #000; }
+.setup-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 56px;
+  margin: -28px 0 0 -9px;
+  border-radius: var(--radius-s);
+  background: var(--text);
+  box-shadow: 0 0 0 2px #000;
+  transition: background var(--dur-1) var(--ease-out);
+}
+.setup-divider:hover::after { background: var(--action-hover); }
+.setup-divider:active::after { background: var(--action-press); }
+.setup-divider:focus-visible { outline: none; }
+.setup-divider:focus-visible::after, .setup-divider.is-last::after { outline: 3px solid var(--seat-1); outline-offset: 3px; }
+/* One line of status for each seat: its number in its colour, and whether a person is found. */
+.setup-seat { flex: 1 1 100%; display: flex; align-items: baseline; gap: var(--space-3); color: var(--text-2); font-size: var(--text-sm); line-height: 1.4; transition: color var(--dur-2) var(--ease-out); }
+.setup-seat b { min-width: 1ch; font-size: var(--text-lg); line-height: 1; }
+.setup-seat.is-ok { color: var(--text); }
+
+/* The tap test: every lane large with its player's number. A tap lights the player's own lane and counts up. */
+.setup-pad.is-tap { cursor: default; }
+.setup-pad.is-tap:hover { box-shadow: none; }
+.setup-pad.is-tap .setup-lane { display: grid; place-content: end center; padding-bottom: 20%; color: var(--seat); font-size: min(4vh, 10cqw); font-style: normal; font-weight: 700; transition: background var(--dur-3) var(--ease-out); }
+.setup-pad.is-tap .setup-lane.is-flash { background: var(--seat); color: var(--ink); transition: none; }
+/* The number sits below the panel's usual corner, so it stays readable while the panel is docked. */
+.setup-pad.is-tap .setup-pad-num { top: 28%; bottom: auto; font-size: min(30vh, 40cqh, 80cqw); transition: color var(--dur-2) var(--ease-out); }
+.setup-pad.is-tap:has(.is-flash) .setup-pad-num { color: var(--ink); transition: none; }
+.setup-tap-count {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  padding: 0.6vh 2vh;
+  border-radius: 99px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: min(5vh, 16cqw);
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out);
+}
+.setup-pad.is-done .setup-tap-count { background: var(--seat); color: var(--ink); }
 
 .setup-handle {
   position: fixed;
