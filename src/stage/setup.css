@@ -109,6 +109,9 @@
   font-size: 9vh;
   line-height: 1;
 }
+/* Seated play, step 3: the two marks that "Place by the camera" asks for a tap on. A tapped mark shows a tick. */
+.setup-marks { position: absolute; inset: 0; pointer-events: none; }
+.setup-mark.is-done { opacity: 0.55; }
 .setup-mark.is-bottom small { top: auto; bottom: 100%; margin: 0 0 1vh; } /* the bottom marks sit near the edge, so their words go above */
 /* The same marks, as the person clicked them on the still. */
 .setup-pic .setup-mark { width: 44px; height: 44px; font-size: var(--text-lg); pointer-events: none; }

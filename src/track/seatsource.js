@@ -11,6 +11,7 @@ export const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html and
 export const FOLLOW_KEY = "seats:follow"; // false when the operator turned following off
 const FOLLOW_EVERY_MS = 100; // how often following looks at the hips: the saved dividers are written at most this often
 const FOLLOW_MAX_DT = 500; // a long gap (a hidden tab) moves the dividers no further than this long a gap would
+const HEIGHT_MS = 500; // a tap in a one-lane pad is the foot that came down furthest in this long (a guess)
 const SWAP_KEY = "pp:seat-swap"; // spot ids whose pad is mirrored: [2, 3]
 export const LANE_U = [0.25, 0.75]; // with two lanes (a lone player): foot 0 and foot 1, the middle of each lane
 export const ONE_LANE_U = 0.5; // with one lane (two to four players): both feet play the one lane
@@ -45,6 +46,17 @@ export function padFeet(feet, spotIds, swapped = [], lanes = {}) {
 // The lane a foot (or a tap) plays, 0 or 1, and always 0 in a one-lane pad. A pad in `swapped` is mirrored.
 // Facing the players the camera's left foot is the player's right, so the default flips, and Swap feet flips it back.
 export const laneOf = ({ spotId, foot }, swapped = [], lanes = {}) => ((lanes[spotId] ?? 2) === 1 ? 0 : (foot === 1) !== isFacing() !== swapped.includes(spotId) ? 1 : 0);
+
+// The camera x of the middle of each seat's feet: { [spotId]: x, or null when no person with feet is seen there }. A pose dropped as a neighbour's does not count.
+export const feetMiddle = (poses) => Object.fromEntries(poses.map((p) => [p.spotId, p.dropped || !p.feet.length ? null : p.feet.reduce((s, f) => s + f.x, 0) / p.feet.length]));
+
+// The camera x of the foot that made a tap, or null when the seat's feet are not in `feet` (the frame's feet, with x). A pad with two lanes
+// knows the foot by name. With one lane the tap does not say which foot, so it is the one that has just come down the furthest: `drop(f)`.
+export function tappedX({ spotId, foot }, feet, lanes = {}, drop = () => 0) {
+  const mine = feet.filter((f) => f.spotId === spotId);
+  if ((lanes[spotId] ?? 2) !== 1) return mine.find((f) => f.foot === foot)?.x ?? null;
+  return mine.reduce((best, f) => (best === null || drop(f) > drop(best) ? f : best), null)?.x ?? null;
+}
 
 // Where the floor draws a foot glow: in the pad's lane, for each foot that is down.
 export function glowFeet(layout, byPad) {
@@ -87,6 +99,8 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   let fitted = !!saved(slicesKey(layout.spots.length)); // lines for this many seats were fitted, dragged or saved before
   let held = false; // following is off for this session only (a line was dragged)
   let lastFollow = 0;
+  const heights = new Map(); // `${spotId}:${foot}` -> [{ t, y }] for the last HEIGHT_MS: how far a foot has just come down (tappedX)
+  const drop = (f) => { const h = heights.get(`${f.spotId}:${f.foot}`); return h ? f.y - Math.min(...h.map((p) => p.y)) : 0; };
 
   // Where the dividers are now: n + 1 shares of the picture's width.
   const boundsNow = () => [slices[0].x0, ...slices.map((s) => s.x1)];
@@ -180,9 +194,15 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     bySpot(lanes) {
       const swapped = saved(SWAP_KEY);
       const swap = Array.isArray(swapped) ? swapped : [];
-      const { feet, taps: tapped } = taps.update(performance.now(), seats?.read() ?? [], lanes);
-      follow(performance.now());
-      for (const t of tapped) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs };
+      const now = performance.now();
+      const read = seats?.read() ?? [];
+      for (const f of read) { // the last HEIGHT_MS of each foot's height, for the tap's x
+        const key = `${f.spotId}:${f.foot}`;
+        heights.set(key, [...(heights.get(key) ?? []).filter((p) => now - p.t < HEIGHT_MS), { t: now, y: f.y }]);
+      }
+      const { feet, taps: tapped } = taps.update(now, read, lanes);
+      follow(now);
+      for (const t of tapped) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs, x: tappedX(t, read, lanes, drop) };
       return padFeet(feet, spotIds, swap, lanes);
     },
 
@@ -192,7 +212,8 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     raw: () => (seats?.poses() ?? []).flatMap((p) => p.feet), // every foot found, [{ spotId, foot, x, y }], whole-picture units
     poses: () => seats?.poses() ?? [], // each seat's last result: { spotId, feet, hipX, dropped, landmarks }
     slices: () => slices.map(({ spotId, x0, x1 }) => ({ spotId, x0, x1 })),
-    taps: () => ({ ...tapLog }),
+    taps: () => ({ ...tapLog }), // each seat's latest tap also has `x`, the camera x of the foot that tapped (null when it was not seen)
+    feetX: () => feetMiddle(seats?.poses() ?? []), // the middle of each seat's feet, for placing its pad (autoplace.js)
     // Reopens the camera chosen in setup, and starts the tracker again if it had failed.
     reload() {
       stop();

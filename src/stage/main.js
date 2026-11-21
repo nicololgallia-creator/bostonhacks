@@ -20,6 +20,7 @@ import { feetBySpot, makeLayout } from "./layout.js";
 import { applyKeystone } from "./keystone.js";
 import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
+import { createFollower } from "./autoplace.js"; // autoplace block below
 
 const LAYOUT_KEY = "pp:layout";
 const TRAIN_KEY = "pp:train"; // the train this floor is in: line, direction, stop, car
@@ -181,6 +182,21 @@ const shift = () => (session.offsetMs() / TRAVEL_MS) * HIT_V;
 const shifted = (tiles) => tiles.map((t) => ({ ...t, v: t.v + shift(), vTail: t.vTail + shift() }));
 
 const feetSource = (() => { try { return pickFeetSource(); } catch (err) { return err; } })();
+
+// ---- autoplace: the pads follow the people (src/stage/autoplace.js). One block: nothing else in this file knows about it. ----
+// Only in the lobby (the session refuses a new layout from the countdown to the end of the song anyway) and never while setup is open
+// (setup's seats step runs its own follower). It does nothing without a saved map and the "Pads follow the people" switch on.
+if (feetSource.feetX) {
+  const follower = createFollower({
+    feetX: () => feetSource.feetX(),
+    getLayout: () => snap.layout,
+    // The same seats in the same order, only moved: so the seated source's slices need no change (feetSource.setLayout is not called).
+    setLayout: (next) => { const ok = session.setLayout(next); if (ok) publish(); return ok; },
+    canMove: () => snap.status === "lobby" && !setupHandle,
+  });
+  setInterval(follower.tick, 200);
+}
+// ---- end autoplace ----
 
 let padLanes = {}; // how many lanes each pad had on the last frame, for a seated source
 function frame() {

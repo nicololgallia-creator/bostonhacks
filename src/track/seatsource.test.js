@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, laneOf, glowFeet, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
 import { createTapDetector } from "./taps.js";
 import { makeLayout } from "../stage/layout.js";
 import { createGame } from "../game/engine.js";
@@ -163,4 +163,27 @@ test("facing: a lone player's camera-left foot plays the right lane, and Swap fe
     assert.equal(laneOf(left, [], { 1: 1 }), 0);
   });
   facing(false, () => { assert.equal(laneOf(left), 0); assert.equal(laneOf(left, [1]), 1); });
+});
+
+test("feetMiddle: the middle of each seat's feet, null for a seat with no person, no feet, or a neighbour's pose", () => {
+  const out = feetMiddle([
+    { spotId: 1, dropped: false, feet: [{ x: 0.3 }, { x: 0.4 }] },
+    { spotId: 2, dropped: false, feet: [{ x: 0.6 }] },
+    { spotId: 3, dropped: false, feet: [] },
+    { spotId: 4, dropped: true, feet: [{ x: 0.9 }] },
+  ]);
+  near(out[1], 0.35); near(out[2], 0.6);
+  assert.equal(out[3], null);
+  assert.equal(out[4], null);
+  assert.deepEqual(feetMiddle([]), {});
+});
+
+test("tappedX: two lanes know the foot by name, one lane takes the foot that came down furthest, and a seat not seen gives null", () => {
+  const feet = [{ spotId: 1, foot: 0, x: 0.3, y: 0.9 }, { spotId: 1, foot: 1, x: 0.4, y: 0.9 }, { spotId: 2, foot: 0, x: 0.7, y: 0.9 }];
+  assert.equal(tappedX({ spotId: 1, foot: 1 }, feet), 0.4);
+  assert.equal(tappedX({ spotId: 1, foot: 0 }, feet, { 1: 2 }), 0.3);
+  const drop = (f) => (f.x === 0.4 ? 0.05 : 0.01);
+  assert.equal(tappedX({ spotId: 1, foot: 0 }, feet, { 1: 1 }, drop), 0.4); // one lane: the tap says foot 0, but foot 1 came down
+  assert.equal(tappedX({ spotId: 3, foot: 0 }, feet), null);
+  assert.equal(tappedX({ spotId: 3, foot: 0 }, feet, { 3: 1 }), null);
 });

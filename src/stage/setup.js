@@ -19,8 +19,9 @@ import "./setup.css";
 import { apply, invert, solve } from "../track/homography.js";
 import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
-import { CAMERA_KEY } from "../track/seatsource.js";
+import { CAMERA_KEY, PAD_V } from "../track/seatsource.js";
 import { moveBound } from "../track/slices.js";
+import { MARK_U, fitMap, placePads, createFollower, loadMap, saveMap, usableMap, isFollowing, setFollowing } from "./autoplace.js";
 import { isFacing, setFacing, turned } from "../facing.js";
 import { applyKeystone, loadCalibration, matrix3dFor, saveCalibration } from "./keystone.js";
 import { feetBySpot, asLayout, makeLayout, MAX_SEATS } from "./layout.js";
@@ -42,6 +43,7 @@ const SWAP_KEY = "pp:seat-swap"; // pad ids whose two feet are mirrored (seatsou
 const TAPS_NEEDED = 3; // taps each seat makes in the tap test
 const FLASH_MS = 250;
 const HOLD_MS = 1500; // a seat that was found a moment ago still counts: the tracker drops a frame now and then
+const MAP_WAIT_MS = 20000; // "Place by the camera" waits this long for each tap before it gives up
 
 const el = (tag, className, text) => {
   const e = document.createElement(tag);
@@ -593,6 +595,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
           const start = fieldAt(e), r = rectOf(spot.id);
           drag(e, (p) => {
             const rect = fit({ ...r, u: r.u + p.x - start.x, v: r.v + p.y - start.y });
+            byHand();
             if (commit(withRect(spot.id, rect))) place(pad, rect);
           });
         });
@@ -601,6 +604,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
           const start = fieldAt(e), at = { x: r.u + r.w - start.x, y: r.v + r.h - start.y }; // where in the corner it was grabbed
           drag(e, (p) => {
             const rect = fit({ ...r, w: p.x + at.x - r.u, h: p.y + at.y - r.v });
+            byHand();
             if (commit(withRect(spot.id, rect))) place(pad, rect);
           });
         });
@@ -620,6 +624,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       const id = Number(pad.dataset.id), r = rectOf(id), step = e.shiftKey ? 0.05 : 0.01;
       const resize = document.activeElement.classList.contains("setup-grip");
       const rect = fit(resize ? { ...r, w: r.w + d[0] * step, h: r.h + d[1] * step } : { ...r, u: r.u + d[0] * step, v: r.v + d[1] * step });
+      byHand();
       if (commit(withRect(id, rect))) place(pad, rect);
     });
 
@@ -652,13 +657,109 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     build();
     mark();
 
+    // Seated play: "Place by the camera" makes a map from two taps on two marks, and then the pads follow the people (autoplace.js).
+    const refresh = () => layout.spots.forEach((s) => place(pads.querySelector(`[data-id="${s.id}"]`), s.rect));
+    const marks = el("div", "setup-marks");
+    const note = el("p", "setup-note");
+    const placeBtn = button("Place by the camera", "is-primary", () => startMap());
+    const againBtn = button("Do it again", "is-quiet", () => startMap());
+    const followBtn = button("Pads follow the people", "", () => { handled = ""; setFollowing(!isFollowing()); describe(); });
+    let handled = ""; // what to say instead of the usual line, after a pad was dragged by hand
+    let map = null; // { points: [{ x, u }], since, seen: tap counts when it began } while the marks are out
+
+    function describe() {
+      const saved = loadMap(), ok = !!usableMap(saved);
+      placeBtn.hidden = !!saved;
+      againBtn.hidden = !saved;
+      followBtn.hidden = !ok;
+      followBtn.classList.toggle("is-on", ok && isFollowing());
+      followBtn.setAttribute("aria-pressed", ok && isFollowing());
+      note.textContent = handled || (!saved ? "Two taps teach the floor where the camera's picture lands. Then each pad finds its person."
+        : !ok ? "The saved map was made with the picture turned the other way. Press Do it again."
+        : isFollowing() ? "The pads follow the people while no song is playing. Drag a pad by hand to stop that."
+        : "Following is off, so the pads stay where they are.");
+    }
+    // A pad moved by hand: following would pull it straight back, so it is turned off, and it says so.
+    function byHand() {
+      if (!seated || !usableMap() || !isFollowing()) return;
+      setFollowing(false);
+      handled = "Following is off because you moved a pad by hand. Press Pads follow the people to turn it on.";
+      describe();
+    }
+    const showMarks = () => marks.replaceChildren(...(map ? MARK_U : []).map((u, i) => {
+      const d = el("div", i < map.points.length ? "setup-mark is-done" : "setup-mark", i < map.points.length ? "✓" : String(i + 1));
+      d.style.left = `${u * 100}%`;
+      d.style.top = `${(layout.spots[0].rect.v + layout.spots[0].rect.h * PAD_V) * 100}%`; // the line the feet are on
+      d.style.background = `var(--seat-${i + 1})`;
+      return d;
+    }));
+    function startMap() {
+      const seen = Object.fromEntries(Object.entries(feet.taps()).map(([id, t]) => [id, t.count]));
+      map = { points: [], since: performance.now(), seen };
+      handled = "";
+      ctx.error("");
+      ctx.say("Put one foot on mark 1 and tap it. Then mark 2. One person can do both, or two people one each.");
+      showMarks();
+    }
+    function endMap(message) {
+      map = null;
+      showMarks();
+      ctx.meta("");
+      ctx.say("Pick how many seats, then drag each pad until it sits at the feet of its seat.");
+      if (message) ctx.error(message);
+      describe();
+    }
+    // One tap on a mark. x is where the foot was in the camera picture.
+    function markTapped(x) {
+      if (!Number.isFinite(x)) return ctx.error("A tap was seen, but not where the foot was. Tap again with the foot clearly in view.");
+      ctx.error("");
+      map.since = performance.now();
+      map.points.push({ x, u: MARK_U[map.points.length] });
+      if (map.points.length < MARK_U.length) { ctx.say("Now put a foot on mark 2 and tap it."); return showMarks(); }
+      try {
+        saveMap(fitMap(map.points));
+      } catch (e) {
+        map.points.pop(); // the second tap was no good: wait for another one on mark 2
+        ctx.error(e.message);
+        return showMarks();
+      }
+      setFollowing(true); // a new map means pads that follow
+      const placed = placePads(layout, feet.feetX(), loadMap());
+      if (commit(placed)) refresh();
+      endMap("");
+      ctx.say("The map is saved. The pads now sit at the people's feet.");
+    }
+    function waitForTaps(now) {
+      for (const [id, t] of Object.entries(feet.taps())) {
+        if (!map || t.count <= (map.seen[id] ?? 0)) continue;
+        map.seen[id] = t.count;
+        markTapped(t.x);
+      }
+      if (!map) return;
+      const left = Math.ceil((MAP_WAIT_MS - (now - map.since)) / 1000);
+      if (left > 0) ctx.meta(`Waiting for a tap on mark ${map.points.length + 1}. ${left} s left.`);
+      else endMap(`No tap on mark ${map.points.length + 1} was read in ${MAP_WAIT_MS / 1000} seconds, so the pads stay where they were. Check the tap test in step 5, then try again.`);
+    }
+    const follower = seated ? createFollower({
+      feetX: () => feet.feetX(),
+      getLayout: () => layout,
+      setLayout: (next) => { if (!commit(next)) return false; refresh(); return true; },
+      canMove: () => !map && !isPlaying?.(),
+    }) : null;
+    if (seated) {
+      field.append(marks);
+      controls.append(placeBtn, againBtn, followBtn, note);
+      describe();
+    }
+
     const g = canvas.getContext("2d");
     const glow = css("--seat-3"), offColor = css("--seat-2");
-    const src = seated ? null : source(field); // seated pads are placed by hand: no feet are shown on the floor here
+    const src = seated ? null : source(field); // seated pads are placed by hand or by the map: no feet are shown on the floor here
     const drawCamera = camera && !seated ? miniCamera() : null;
     let frame = 0;
     const tick = () => {
       if (refused && !isPlaying?.()) { refused = false; ctx.error(""); } // the song has ended, so the refusal no longer holds
+      if (seated) { follower.tick(); waitForTaps(performance.now()); }
       if (src) {
         const list = src.read();
         drawFeet(g, list, glow, offColor);
