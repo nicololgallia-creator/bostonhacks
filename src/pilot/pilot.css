@@ -1,0 +1,264 @@
+﻿/* Platform Piano, the phone's new look. The train you are on sets every accent: this page changes
+   colour with the line (green, red, orange, blue). Ground is a pale blueprint grid in that colour.
+   Shapes come from a transit map: thick lines, white stations with a dark ring, a station-sign pill.
+   Lilita One (title) and Nunito (text), both SIL Open Font License, saved locally in case the
+   laptop's Wi-Fi has no internet. The --line-* colours come from src/tokens.css.
+
+   Layers, bottom to top, so nothing depends on source order: 0 lines and track fills, 1 stations,
+   2 the train marker. Dots and markers are always above the line they sit on. */
+@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap; src: url("./fonts/lilita-one-latin.woff2") format("woff2"); }
+@font-face {
+  font-family: "Nunito"; font-style: normal; font-weight: 600 900; font-display: swap; src: url("./fonts/nunito-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light;
+  --ink: #141413;       /* 18:1 on white */
+  --ink-2: #444B5C;     /* 8.6:1 on white */
+  --paper: #FFFFFF;
+  --sun: #FFD23F;
+
+  /* the line you are on. JS sets --c (its hero colour), --butter, --badge and --badge-ink from lines.js. Text on --c is always ink
+     (checked on every one). The page's other tints are made from --c. */
+  --on: var(--ink);
+  --c-grid: color-mix(in srgb, var(--c) 30%, #fff);
+  --c-tint: color-mix(in srgb, var(--c) 30%, #fff);
+  --c-pale: color-mix(in srgb, var(--c) 55%, #fff);
+  --c-soft: color-mix(in srgb, var(--c) 75%, #fff);
+  --c-deep: color-mix(in srgb, var(--c) 58%, var(--ink));
+  --font: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Lilita One", "Nunito", system-ui, sans-serif;
+
+  --stroke: 3px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+*, *::before, *::after { box-sizing: border-box; } /* pseudo-elements too: without this their borders push them off their own centre line */
+* { margin: 0; }
+html { background: var(--c); }
+body { font: 700 1.0625rem/1.4 var(--font); color: var(--ink); min-height: 100dvh; -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased; font-synthesis: none; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
+
+/* The page: a blueprint grid in the line's own pale colour */
+.app {
+  max-width: 30rem; min-height: 100dvh; margin: 0 auto;
+  background:
+    linear-gradient(var(--c-grid) 1.5px, transparent 1.5px) 0 0 / 2.25rem 2.25rem,
+    linear-gradient(90deg, var(--c-grid) 1.5px, transparent 1.5px) 0 0 / 2.25rem 2.25rem,
+    var(--paper);
+  padding: max(1rem, env(safe-area-inset-top)) 1.25rem max(2.5rem, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 1.5rem;
+  overflow-x: clip; /* a screen arriving must never widen the page on a phone */
+}
+@media (min-width: 600px) {
+  .app { margin-block: 2rem; min-height: calc(100dvh - 4rem); border: var(--stroke) solid var(--ink); border-radius: 2rem; padding-inline: 2rem; }
+}
+
+/* Away from the tab: endless motion waits, so nothing is out of step on return (JS finishes the rest) */
+.away *, .away *::before, .away *::after { animation-play-state: paused !important; }
+
+/* ---- Top bar: back, and the trip so far (a small map; the train sits at the step you are on) ---- */
+.bar { display: flex; align-items: center; gap: 1rem; min-height: 3rem; }
+.back {
+  flex: none; width: 3rem; height: 3rem; display: grid; place-items: center; cursor: pointer;
+  background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 50%;
+  transition: transform 120ms var(--ease-out), background-color 150ms;
+}
+.back[hidden] { display: none; }
+.back svg { width: 1.5rem; height: 1.5rem; }
+.back:active { transform: scale(0.92); background: var(--c-soft); }
+
+.track { --p: 25%; position: relative; flex: 1; height: 2.5rem; margin-inline: 0.5rem; isolation: isolate; }
+.t-base, .t-done { position: absolute; z-index: 0; left: 0; top: 50%; height: 0.5rem; margin-top: -0.25rem; border-radius: 0.25rem; }
+.t-base { right: 0; background: var(--ink); opacity: 0.18; }
+.t-done { width: var(--p); background: var(--c); border: 2.5px solid var(--ink); transition: width 900ms var(--ease-in-out); }
+.track b { position: absolute; z-index: 1; top: 50%; width: 1rem; height: 1rem; margin: -0.5rem 0 0 -0.5rem; border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); }
+.track b:nth-child(1) { left: 0; } .track b:nth-child(2) { left: 25%; } .track b:nth-child(3) { left: 50%; } .track b:nth-child(4) { left: 75%; } .track b:nth-child(5) { left: 100%; }
+.t-train {
+  position: absolute; z-index: 2; top: 50%; left: var(--p); width: 2rem; height: 1.5rem; margin: -0.75rem 0 0 -1rem;
+  background: var(--c); border: var(--stroke) solid var(--ink); border-radius: 0.5rem;
+  transition: left 900ms var(--ease-in-out);
+}
+.t-train::before { content: ""; position: absolute; left: 0.25rem; right: 0.25rem; top: 0.1875rem; height: 0.375rem; border-radius: 0.125rem; background: var(--paper); }
+
+/* ---- Screens ---- */
+.screen { display: flex; flex-direction: column; gap: 1.5rem; flex: 1; }
+.enter { animation: arrive 520ms var(--ease-out) both; }
+@keyframes arrive { from { opacity: 0; transform: translateX(40px); } 60% { opacity: 1; } to { opacity: 1; transform: none; } } /* a train pulling in */
+
+.ask { font: 400 2.25rem/1.08 var(--display); letter-spacing: 0.005em; text-wrap: balance; }
+.hl { background: linear-gradient(transparent 56%, var(--butter) 56% 94%, transparent 94%); padding-inline: 0.12em; margin-inline: -0.12em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+.roundel { flex: none; display: grid; place-items: center; width: 3.25rem; height: 3.25rem; border: var(--stroke) solid var(--ink); border-radius: 50%; background: var(--badge); font: 400 1.75rem/1 var(--display); color: var(--badge-ink); }
+
+/* the question row: the question, and the conductor beside it (a mount; see MASCOT MOUNT in pilot.js) */
+.ask-row, .top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.ask-row .ask, .top .ask { font-size: 1.875rem; min-width: 0; }
+.mascot-mount { flex: none; width: 7rem; aspect-ratio: 320 / 380; }
+.mascot-mount[hidden] { display: none; }
+.mascot-mount svg { display: block; width: 100%; height: 100%; overflow: visible; animation: m-in 320ms var(--ease-out) both, m-bob 3.6s var(--ease-in-out) 320ms infinite; }
+#arm-wave { transform-box: view-box; transform-origin: 70px 172px; animation: m-wave 1.9s var(--ease-in-out) infinite alternate; }
+#tentacles { transform-box: view-box; transform-origin: 160px 196px; animation: m-sway 2.8s var(--ease-in-out) infinite alternate; }
+@keyframes m-in { from { opacity: 0; transform: translateY(0.5rem); } }
+@keyframes m-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.25rem); } }
+@keyframes m-wave { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes m-sway { from { transform: rotate(-2deg); } to { transform: rotate(2deg); } }
+/* ---- Screen 1: the train, then the map ---- */
+.train { display: flex; flex-direction: column; gap: 1rem; padding: 1.125rem 1.125rem 0.875rem; background: var(--c); color: var(--on); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; }
+.train .who { display: flex; align-items: center; gap: 0.875rem; }
+.train b { display: block; font: 400 1.75rem/1.05 var(--display); }
+.train small { display: block; margin-top: 0.125rem; font-size: 0.9375rem; font-weight: 800; }
+.windows { display: flex; gap: 0.5rem; }
+.windows i { flex: 1; height: 1.75rem; border: var(--stroke) solid var(--ink); border-radius: 0.625rem 0.625rem 0.25rem 0.25rem; background: color-mix(in srgb, var(--paper) 88%, var(--c)); }
+.rails { height: 1.125rem; margin: 0.125rem 0.75rem 0; background: repeating-linear-gradient(90deg, var(--ink) 0 0.5rem, transparent 0.5rem 1.25rem) 0 100% / 100% 0.4375rem no-repeat, linear-gradient(var(--ink), var(--ink)) 0 0 / 100% 0.25rem no-repeat; }
+
+/* The map. The line is drawn in pieces by each stop (a piece up to the stop, a piece down from it), so it can never
+   be the wrong length when a name wraps or a font arrives. Only the train marker is placed from a measurement. */
+.map { --rx: 1.125rem; --lw: 0.875rem; --gap: 0.875rem; list-style: none; padding: 0; position: relative; margin-top: 0.25rem; isolation: isolate; }
+.map li { position: relative; padding-left: 3.25rem; margin-bottom: var(--gap); }
+.map li:last-of-type { margin-bottom: 0; }
+.map .seg { position: absolute; z-index: 0; left: calc(var(--rx) - var(--lw) / 2); width: var(--lw); background: var(--c); border-inline: 3px solid var(--ink); transition: background-color 220ms var(--ease-out) var(--d, 0ms); }
+.map .up { top: calc(var(--gap) * -1); height: calc(50% + var(--gap)); }
+.map .down { top: 50%; height: 50%; }
+.map.has-pick .here .down, .map li.passed .seg, .map li.picked .up { background: var(--c-deep); }
+.map .row, .map .you { animation: pull-in 480ms var(--ease-out) both; animation-delay: calc(var(--i) * 60ms); }
+@keyframes pull-in { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+
+/* a station: white, with a thick dark ring, always above the line */
+.dot {
+  position: absolute; z-index: 1; left: calc(var(--rx) - 0.875rem); top: 50%; width: 1.75rem; height: 1.75rem; margin-top: -0.875rem;
+  display: grid; place-items: center; border: 0.3125rem solid var(--ink); border-radius: 50%; background: var(--paper); color: var(--ink);
+  transition: transform 300ms var(--ease-pop); transition-delay: var(--d, 0ms);
+}
+.dot svg { width: 0.75rem; height: 0.75rem; transform: scale(0); transition: transform 260ms var(--ease-pop) calc(var(--d, 0ms) + 150ms); }
+li.picked .dot { transform: scale(1.35); }
+li.picked .dot svg { transform: scale(1); }
+
+.here { min-height: 3.5rem; display: flex; flex-direction: column; justify-content: center; }
+.here small { display: block; font-size: 0.875rem; font-weight: 800; color: var(--ink-2); }
+.here strong { font-size: 1.1875rem; font-weight: 900; line-height: 1.2; }
+
+/* the train's own marker, riding the line. Above every station. */
+.engine {
+  position: absolute; z-index: 2; left: calc(var(--rx) - 1.5rem); top: var(--top, 1.75rem); width: 3rem; height: 2.5rem; margin-top: -1.25rem;
+  background: var(--c); border: var(--stroke) solid var(--ink); border-radius: 0.875rem;
+  transform: translateY(var(--ride, 0px)); transition: transform 750ms var(--ease-in-out); pointer-events: none;
+}
+.t-train::after, .engine::after { content: ""; position: absolute; left: 0; right: 0; background: radial-gradient(circle at 25% 50%, var(--sun) var(--lamp), #0000 calc(var(--lamp) + 0.5px)), radial-gradient(circle at 75% 50%, var(--sun) var(--lamp), #0000 calc(var(--lamp) + 0.5px)); }
+.t-train::after { --lamp: 0.125rem; bottom: 0.125rem; height: 0.25rem; }
+.engine::after { --lamp: 0.25rem; bottom: 0.3125rem; height: 0.5rem; }
+.engine::before { content: ""; position: absolute; left: 0.3125rem; right: 0.3125rem; top: 0.3125rem; height: 0.8125rem; border-radius: 0.3125rem; background: var(--paper); }
+.map:not(.has-pick) .engine { animation: idle-engine 1.8s var(--ease-in-out) infinite; }
+@keyframes idle-engine { 0%, 100% { translate: 0 0; } 50% { translate: 0 -0.125rem; } }
+
+/* a stop you can tap: a pill with a plain outline, and its distance on a departure-board chip */
+.row {
+  width: 100%; min-height: 4rem; padding: 0.5rem 0.625rem 0.5rem 1.375rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 2rem; cursor: pointer;
+  font-size: 1.1875rem; font-weight: 900; line-height: 1.2; text-align: left;
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out), opacity 240ms var(--ease-out);
+}
+.row .chip { flex: none; padding: 0.3125rem 0.75rem; border-radius: 0.75rem; background: var(--ink); color: #fff; font-size: 0.875rem; font-weight: 800; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row:active { transform: scale(0.97); background: var(--c-soft); }
+.map.has-pick li:not(.picked):not(.passed):not(.here) .row { opacity: 0.35; }
+.map li.picked .row { background: var(--c); color: var(--on); }
+.map li.picked .chip { background: var(--paper); color: var(--ink); }
+.has-pick .row { pointer-events: none; }
+
+/* ---- Screen 2: the ticket ---- */
+.flow { display: flex; flex-direction: column; gap: 1.5rem; flex: 1; }
+.ticket { filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink)); animation: tear-in 640ms var(--ease-out) both; }
+.ticket.swap { animation: swap-in 240ms var(--ease-out) both; }
+@keyframes tear-in { from { opacity: 0; transform: translateY(-1.25rem) rotate(-1.5deg); } 50% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes swap-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+.tk {
+  --notch: 0.9375rem; --stub: 8.75rem; --tear: calc(100% - var(--stub) + 1.5px); /* the middle of the dashed line */ display: flex; flex-direction: column; background: var(--paper); border-radius: 1.75rem; overflow: hidden;
+  -webkit-mask: radial-gradient(circle var(--notch) at 0 var(--tear), #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% var(--tear), #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle var(--notch) at 0 var(--tear), #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% var(--tear), #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat;
+}
+.tk-top { display: flex; align-items: center; gap: 0.75rem; padding: 1.125rem 1.25rem 1rem; background: var(--c); color: var(--on); font: 400 1.25rem/1.1 var(--display); }
+.tk-top .roundel { width: 2.25rem; height: 2.25rem; font-size: 1.25rem; border-width: 2.5px; }
+.tk-top span:last-child { margin-left: auto; padding: 0.25rem 0.75rem; border: 2.5px solid currentColor; border-radius: 1rem; font: 400 1rem/1.2 var(--display); }
+.tk-main { display: flex; flex-direction: column; gap: 1rem; padding: 1.375rem 1.5rem 1.5rem; flex: 1; }
+.tk h2 { font: 400 2.25rem/1.05 var(--display); text-wrap: balance; }
+.tk-main p { margin-top: -0.5rem; font-size: 0.9375rem; font-weight: 800; color: var(--ink-2); }
+.tk-stub { height: var(--stub); padding: 1.25rem 1.5rem 1rem; border-top: 3px dashed var(--ink); background: var(--c-tint); display: flex; flex-direction: column; justify-content: center; gap: 0.75rem; }
+
+/* a song's cover: the real album cover when it has loaded, else a tile in the line's colour with the first letter */
+.cover { position: relative; flex: none; display: grid; place-items: center; overflow: hidden; background: var(--c); color: var(--on); border: var(--stroke) solid var(--ink); font-family: var(--display); line-height: 1; }
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 300ms var(--ease-out); }
+.cover img.on { opacity: 1; }
+.cover.big { align-self: flex-start; width: 7rem; height: 7rem; border-radius: 1.5rem; font-size: 3.5rem; }
+.cover.mini { width: 3.5rem; height: 3.5rem; border-radius: 1rem; border-width: 2.5px; font-size: 1.75rem; }
+
+/* the song on the ride: a short track, a train that rides as far as the song goes (the track draws itself with CSS) */
+.run { --k: 0%; position: relative; height: 2.5rem; margin-inline: 0.25rem 0.5rem; isolation: isolate; }
+.run .r-base, .run .r-fill { position: absolute; z-index: 0; left: 0; top: 50%; height: 0.75rem; margin-top: -0.375rem; border-radius: 0.375rem; }
+.run .r-base { right: 0; background: var(--paper); border: 2.5px solid var(--ink); }
+.run .r-fill { width: var(--k); background: var(--c); border: 2.5px solid var(--ink); min-width: 1.5rem; animation: grow 1100ms var(--ease-in-out) 500ms both; }
+.run b { position: absolute; z-index: 1; top: 50%; width: 1.125rem; height: 1.125rem; margin: -0.5625rem 0 0 -0.5625rem; border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); }
+.run b:first-of-type { left: 0; } .run b:last-of-type { left: 100%; }
+.run .t-train { z-index: 2; left: var(--k); transition: none; animation: ride 1100ms var(--ease-in-out) 500ms both; }
+@keyframes grow { from { width: 1.5rem; } }
+@keyframes ride { from { left: 0%; } }
+.times { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; font-size: 0.9375rem; font-weight: 800; color: var(--ink-2); }
+.times b { font: 400 1.75rem/1 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 0.375rem; }
+
+.still .r-fill, .still .t-train { animation: none; }
+.still .mascot-mount svg, .mascot-mount.still svg { animation: m-bob 3.6s var(--ease-in-out) infinite; }
+
+/* ---- Buttons: station-sign pills ---- */
+.btn {
+  min-height: 3.75rem; width: 100%; padding: 0.5rem 0.5rem 0.5rem 1.75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  background: var(--c); color: var(--on); border: var(--stroke) solid var(--ink); border-radius: 2rem; cursor: pointer;
+  font: 400 1.5rem/1 var(--display); letter-spacing: 0.01em; text-align: left;
+  transition: transform 120ms var(--ease-out);
+}
+.btn .go { flex: none; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 50%; color: var(--ink); }
+.btn .go svg { width: 1rem; height: 1rem; margin-left: 0.125rem; }
+.btn:active { transform: scale(0.97); }
+.btn.ghost { background: var(--paper); color: var(--ink); justify-content: center; padding: 0.5rem 1.75rem; transition: transform 120ms var(--ease-out), background-color 150ms; }
+.btn.ghost:active { background: var(--c-soft); }
+.actions { display: flex; flex-direction: column; gap: 0.875rem; margin-top: auto; }
+.later { text-align: center; font-size: 0.9375rem; font-weight: 800; color: var(--ink-2); min-height: 2.8em; }
+
+/* ---- Loading, error ---- */
+.sk { height: 4rem; border: var(--stroke) solid var(--ink); border-radius: 2rem; background: var(--paper); margin-left: 3.25rem; animation: breathe 1.3s var(--ease-in-out) infinite alternate; animation-delay: calc(var(--i) * 120ms); }
+.sk-list { display: flex; flex-direction: column; gap: 0.875rem; }
+@keyframes breathe { from { opacity: 0.3; } to { opacity: 0.9; } }
+.notice { display: flex; flex-direction: column; gap: 1rem; padding: 1.5rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; }
+.notice h2 { font: 400 1.75rem/1.1 var(--display); }
+.notice p { color: var(--ink-2); }
+
+/* ---- More songs: a sheet ---- */
+dialog.sheet { margin: auto auto 0; width: 100%; max-width: 30rem; max-height: 88dvh; border: var(--stroke) solid var(--ink); border-bottom: 0; border-radius: 2rem 2rem 0 0; padding: 1.5rem 1.25rem max(1.5rem, env(safe-area-inset-bottom)); background: var(--paper); color: var(--ink); }
+dialog.sheet[open] { display: flex; flex-direction: column; overflow: hidden; animation: rise 340ms var(--ease-out); }
+dialog.sheet::backdrop { background: rgb(20 22 28 / 0.5); animation: fade 200ms var(--ease-out); }
+@keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.sheet h2 { font: 400 1.75rem/1.1 var(--display); margin-bottom: 1rem; }
+.sheet ul { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; margin: 0 -0.25rem 1rem; padding: 0.25rem; overflow: auto; min-height: 0; }
+.sheet ul:focus-visible { outline: none; } /* the list scrolls but is not a control; its buttons show their own focus */
+.sheet .row { padding: 0.5rem 0.625rem 0.5rem 0.5rem; justify-content: flex-start; gap: 0.875rem; min-height: 4.5rem; border-radius: 1.5rem; }
+.sheet .row .name { flex: 1; }
+.sheet .row .chip { margin-left: auto; }
+.sheet .row[aria-current="true"] { background: var(--c-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+
+
+
+
+
+
+
+
+
+
+

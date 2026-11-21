@@ -1,304 +1,244 @@
-// The floor in the falling-tiles look: one lane for each seat (four at most), a lit field with dark
-// tiles sliding toward the players, a glowing hit line, hold tiles that fill while a foot stays, and one
-// big score with the last judgement and the combo under it.
-// The lobby and the results still come from render.js, so this file only draws a song being played.
-// Same call as render.js: createRenderer(canvas) returns draw(view).
-import { HIT_V, TRAVEL_MS, songSeconds } from "./engine.js";
-import { createRenderer as createPadsRenderer } from "./render.js";
+// The floor in the falling-tiles look (first drawn by Zohayb, refined in our style): black tiles the width of a lane
+// slide toward the players on a field the colour of the line the train is on. Each seat's lane is drawn at that
+// seat's pad, so the lanes sit at the players' feet. A lone player's pad is two lanes, one for each foot.
+// Same call as render.js: createRenderer(canvas) returns draw(view). Every screen is drawn here: the lobby, the
+// countdown, the song's title, playing, paused and the results. Flat shapes only, no shadowBlur, nothing built per frame.
+import { HIT_V, ZONE_V } from "./engine.js";
+import { INK, WHITE, GOLD, themeFor, seatOf, loadFonts, createKit, easeOut, spring } from "./floor-look.js";
+import { createScreens, drawChip, HUD_BOTTOM } from "./floor-screens.js";
 
-const SEATS = ["#29D6FF", "#FF4FA3", "#FFD43B", "#7CFF6B"]; // Seat colours, shared with the phone page
-const FAMILY = '"Bricolage Grotesque", "Arial Black", system-ui, sans-serif';
-const WHITE = "#ffffff";
-const TILE = "#07070d"; // a tile is a hole in the light
-// The field's light moves through the T's four subway colours as the song goes: blue, green, orange, red.
-const SKIES = [
-  { top: [70, 120, 255], bottom: [40, 70, 220] },
-  { top: [60, 205, 140], bottom: [10, 150, 95] },
-  { top: [255, 190, 80], bottom: [240, 130, 30] },
-  { top: [255, 120, 140], bottom: [225, 55, 75] },
-];
-const TAP_H = 0.2; // a tap tile's length, as a share of the lane's length
-const GAP_V = 0.012; // the light left between two tiles that follow each other in a lane
+const TAP_H = 0.2; // a tap tile's length, as a share of its pad's length
+const GAP_V = 0.012; // the field left between two tiles that follow each other in a lane
 const FLASH_MS = 320;
 const WORD_MS = 700;
-const WORDS = { perfect: "PERFECT", good: "GOOD", miss: "MISS" };
-const WORD_FILL = { perfect: "#FFF27A", good: WHITE, miss: "#FF5468" };
-
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-const mix = (a, b, k) => Math.round(a + (b - a) * k);
-const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
-const blend = (a, b, k) => [mix(a[0], b[0], k), mix(a[1], b[1], k), mix(a[2], b[2], k)];
-const seatColour = (spotId) => SEATS[(((spotId - 1) % SEATS.length) + SEATS.length) % SEATS.length];
-const clockText = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const SQUASH_MS = 160;
+const WORDS = ["", "Perfect", "Good", "Miss"];
+const LANES = 64; // per-lane memory: 8 spots by 8 lanes
+const slot = (spotId, lane) => ((spotId & 7) << 3) | (lane & 7);
 
 export function createRenderer(canvas) {
-  const padsDraw = createPadsRenderer(canvas); // owns the canvas size and loads the font
-  const ctx = canvas.getContext("2d");
-  const flashes = new Map(); // "spotId:lane" -> { at, miss }
-  const bursts = []; // rings that open where a foot landed
-  let word = null; // the last judgement: { grade, at }
-  let shownScore = 0;
+  const kit = createKit(canvas);
+  const { ctx } = kit;
+  const screens = createScreens(kit);
+  const hitAt = new Float64Array(LANES).fill(-1e9); // when a lane last scored
+  const missAt = new Float64Array(LANES).fill(-1e9);
+  const wordAt = new Float64Array(LANES).fill(-1e9);
+  const wordGrade = new Uint8Array(LANES); // 1 perfect, 2 good, 3 miss
+  const behind = new Float64Array(8); // for each lane of the pad being drawn, the front of the tile drawn before this one
+  let ready = false;
+  let wordW = [0, 0, 0, 0];
   let prevStatus = null;
+  let lastNow = 0;
 
-  function text(str, x, y, size, fill = WHITE, maxW = Infinity) {
-    ctx.font = `800 ${Math.max(1, Math.round(size))}px ${FAMILY}`;
-    const width = ctx.measureText(str).width;
-    if (width > maxW) { size *= maxW / width; ctx.font = `800 ${Math.max(1, Math.round(size))}px ${FAMILY}`; }
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = size * 0.14;
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.strokeText(str, x, y);
-    ctx.fillStyle = fill;
-    ctx.fillText(str, x, y);
-  }
-
-  function rounded(x, y, w, h, r) {
-    r = Math.max(0, Math.min(r, w / 2, h / 2));
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-  }
-
-  // Each seat is one lane. A lane runs from halfway to the seat on its left to halfway to the seat on its
-  // right, and the outer lanes run to the edges, so the lanes touch and fill the picture.
-  function lanesOf(layout, W, H) {
-    const spots = [...layout.spots].sort((a, b) => a.rect.u - b.rect.u);
-    return spots.map((spot, i) => {
-      const left = i === 0 ? 0 : (spots[i - 1].rect.u + spots[i - 1].rect.w + spot.rect.u) / 2;
-      const right = i === spots.length - 1 ? 1 : (spot.rect.u + spot.rect.w + spots[i + 1].rect.u) / 2;
-      return {
-        spot, x: left * W, w: (right - left) * W,
-        y: (v) => (spot.rect.v + v * spot.rect.h) * H, // a tile's v, in pixels down the picture
-      };
-    });
-  }
-
-  function sky(W, H, progress) {
-    const at = clamp01(progress) * (SKIES.length - 1);
-    const i = Math.min(SKIES.length - 2, Math.floor(at));
-    const k = at - i;
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, rgb(blend(SKIES[i].top, SKIES[i + 1].top, k)));
-    g.addColorStop(1, rgb(blend(SKIES[i].bottom, SKIES[i + 1].bottom, k)));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  function tapTile(x, w, yHead, yTop, state) {
-    if (state === "hit") { ctx.globalAlpha = 0.16; ctx.fillStyle = TILE; } // a played tile stays as a ghost and slides away
-    else if (state === "missed") { ctx.globalAlpha = 0.4; ctx.fillStyle = "#5a1020"; }
-    else { ctx.globalAlpha = 1; ctx.fillStyle = TILE; }
-    rounded(x, yTop, w, yHead - yTop, 10);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-
-  function holdTile(x, w, yHead, yTop, state, colour, yLine) {
-    const done = state === "hit";
-    const missed = state === "missed";
-    ctx.save();
-    rounded(x, yTop, w, yHead - yTop, 10);
-    ctx.clip();
-    ctx.globalAlpha = done ? 0.3 : missed ? 0.4 : 1;
-    if (missed) ctx.fillStyle = "#5a1020";
-    else {
-      const g = ctx.createLinearGradient(0, yTop, 0, yHead);
-      g.addColorStop(0, colour);
-      g.addColorStop(0.75, TILE);
-      ctx.fillStyle = g;
-    }
-    ctx.fillRect(x, yTop, w, yHead - yTop);
-    if (state === "holding") {
-      // The part already played fills with the seat's colour, with a round cap at the line.
-      const cap = w * 0.5;
-      ctx.fillStyle = colour;
-      ctx.beginPath();
-      ctx.ellipse(x + w / 2, yLine, w / 2, cap * 0.5, 0, Math.PI, 0);
-      ctx.lineTo(x + w, yHead);
-      ctx.lineTo(x, yHead);
-      ctx.closePath();
-      ctx.fill();
-    } else if (!done && !missed) {
-      // A waiting hold shows where to stand and how long: a ring at its front and a line to its end.
-      const unit = Math.min(w, 320); // a wide lane keeps the ring the size a foot can read
-      const ringY = yHead - unit * 0.2;
-      ctx.strokeStyle = WHITE;
-      ctx.lineWidth = Math.max(4, unit * 0.022);
-      if (ringY - unit * 0.07 > yTop + unit * 0.1) {
-        ctx.beginPath();
-        ctx.moveTo(x + w / 2, yTop + unit * 0.1);
-        ctx.lineTo(x + w / 2, ringY - unit * 0.07);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.arc(x + w / 2, ringY, unit * 0.07, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
+  function measure() { wordW = WORDS.map((w) => (w ? kit.width(w, kit.H * 0.06) + 44 * kit.U : 0)); }
+  loadFonts().then(() => { ready = true; measure(); });
+  window.addEventListener("resize", () => { kit.resize(); if (ready) measure(); });
 
   function onEvent(e, now) {
     if (e.type !== "hit" && e.type !== "holdStart" && e.type !== "miss") return;
-    const miss = e.type === "miss";
-    flashes.set(`${e.spotId}:${e.lane}`, { at: now, miss });
-    word = { grade: miss ? "miss" : e.grade === "perfect" ? "perfect" : "good", at: now };
-    if (!miss) bursts.push({ spotId: e.spotId, lane: e.lane, at: now });
+    const i = slot(e.spotId, e.lane);
+    wordAt[i] = now;
+    if (e.type === "miss") { missAt[i] = now; wordGrade[i] = 3; return; }
+    hitAt[i] = now;
+    wordGrade[i] = e.grade === "perfect" ? 1 : 2;
   }
 
-  function hud(view, W, H, now) {
-    const { song, songMs, transit, team, players } = view;
-    const total = songSeconds(song) * 1000;
-    // Progress: a thick bar across the top, with three marks on the way.
-    const bx = W * 0.22, bw = W * 0.56, by = H * 0.045, bh = Math.max(8, H * 0.014);
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    rounded(bx, by - bh / 2, bw, bh, bh / 2); ctx.fill();
-    ctx.fillStyle = WHITE;
-    rounded(bx, by - bh / 2, bw * clamp01(songMs / total), bh, bh / 2); ctx.fill();
-    for (const k of [0.25, 0.5, 0.75, 1]) {
+  // A tap tile is a black slab with a small window at its front. One that was just played squashes against the line.
+  function tapTile(th, tx, tw, yTop, yHead, t, squash) {
+    const { H, U } = kit;
+    let w = tw;
+    let h = yHead - yTop;
+    let x = tx;
+    if (squash > 0) { h *= 1 - 0.22 * squash; w *= 1 + 0.06 * squash; x -= (w - tw) / 2; yTop = yHead - h; }
+    ctx.beginPath();
+    ctx.roundRect(x, yTop, w, h, 16 * U);
+    ctx.fillStyle = t.state === "hit" ? (squash > 0 ? INK : th.ghost) : t.state === "missed" ? th.dull : INK;
+    ctx.fill();
+    if (t.state === "waiting" && h > H * 0.08) {
       ctx.beginPath();
-      ctx.arc(bx + bw * k, by, bh * 1.1, 0, Math.PI * 2);
-      ctx.fillStyle = songMs / total >= k ? WHITE : "rgba(255,255,255,0.55)";
+      ctx.roundRect(x + w * 0.27, yHead - H * 0.052, w * 0.46, H * 0.022, 6 * U);
+      ctx.fillStyle = th.slot;
       ctx.fill();
     }
-    // The time left: to the train when the set has one, else to the end of the song.
-    const left = transit?.endsAt ? transit.endsAt - Date.now() : total - Math.max(0, songMs);
-    text(clockText(left), W * 0.1, H * 0.06, H * 0.085);
+  }
 
-    const target = team?.score ?? players.reduce((s, p) => s + p.score, 0);
-    shownScore += (target - shownScore) * 0.25;
-    if (Math.abs(target - shownScore) < 1) shownScore = target;
-    text(String(Math.round(shownScore)), W / 2, H * 0.155, H * 0.13);
+  // A hold tile is a long slab. Waiting, it shows where to stand with a ring at its front and a line to its end.
+  // While a foot holds it, it fills with the seat's colour and shrinks toward the line.
+  function holdTile(th, seat, tx, tw, yTop, yHead, t) {
+    const { H, U } = kit;
+    ctx.beginPath();
+    ctx.roundRect(tx, yTop, tw, yHead - yTop, 16 * U);
+    if (t.state === "holding") {
+      ctx.fillStyle = seat.fill;
+      ctx.fill();
+      ctx.lineWidth = 5 * U;
+      ctx.strokeStyle = INK;
+      ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = t.state === "hit" ? th.ghost : t.state === "missed" ? th.dull : INK;
+    ctx.fill();
+    if (t.state !== "waiting") return;
+    const r = Math.min(tw * 0.16, H * 0.05);
+    const ringY = yHead - r * 1.9;
+    ctx.lineWidth = 5 * U;
+    ctx.strokeStyle = th.slot;
+    ctx.beginPath();
+    ctx.arc(tx + tw / 2, ringY, r, 0, Math.PI * 2);
+    ctx.stroke();
+    if (ringY - r > yTop + r) { ctx.beginPath(); ctx.moveTo(tx + tw / 2, yTop + r); ctx.lineTo(tx + tw / 2, ringY - r); ctx.stroke(); }
+  }
 
-    if (word && now - word.at < WORD_MS) {
-      const age = (now - word.at) / WORD_MS;
-      const pop = 1 + 0.35 * Math.max(0, 1 - age * 5); // lands big, settles at once
-      ctx.globalAlpha = age < 0.7 ? 1 : 1 - (age - 0.7) / 0.3;
-      text(WORDS[word.grade], W / 2, H * 0.265, H * 0.075 * pop, WORD_FILL[word.grade]);
-      const combo = Math.max(0, ...players.map((p) => p.combo));
-      if (combo > 1 && word.grade !== "miss") text(`×${combo}`, W / 2, H * 0.345, H * 0.06);
+  function drawPad(th, pad, spot, songMs, now) {
+    const { W, H, U } = kit;
+    const r = spot.rect;
+    const px = r.u * W;
+    const pw = r.w * W;
+    const yBase = r.v * H;
+    const ph = r.h * H;
+    const top = Math.max(yBase, H * HUD_BOTTOM);
+    const yLine = yBase + HIT_V * ph;
+    const bottom = yBase + ph;
+    const n = Math.max(1, pad.lanes | 0);
+    const gapX = n > 1 ? 36 * U : 0;
+    const laneW = (pw - gapX * (n - 1)) / n;
+    const seat = seatOf(th, pad.spotId);
+
+    let lit = 0; // the lanes with a foot down, one bit each
+    for (let k = 0; k < pad.feet.length; k++) {
+      const f = pad.feet[k];
+      if (f.v >= ZONE_V) lit |= 1 << Math.min(n - 1, Math.floor(f.u * n));
+    }
+    const sleeperGap = 0.1 * ph;
+    const scroll = ((((songMs * HIT_V) / 2500) * ph) % sleeperGap + sleeperGap) % sleeperGap;
+
+    for (let i = 0; i < n; i++) {
+      const x = px + i * (laneW + gapX);
+      const s = slot(pad.spotId, i);
+      const hitAge = now - hitAt[s];
+      const missAge = now - missAt[s];
+      const pop = hitAge < 1000 ? 1 + 0.035 * spring(hitAge / 1000) : missAge < 1000 ? 1 - 0.02 * spring(missAge / 1000) : 1;
+      ctx.save();
+      if (pop !== 1) { ctx.translate(x + laneW / 2, bottom); ctx.scale(pop, pop); ctx.translate(-(x + laneW / 2), -bottom); }
+
+      // The lane: a slot, the foot zone below the hit line, two rails, and sleepers running past with the song.
+      ctx.beginPath();
+      ctx.roundRect(x, top, laneW, bottom - top, kit.rad);
+      ctx.fillStyle = th.slot;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = lit & (1 << i) ? seat.fill : th.platform;
+      ctx.fillRect(x, yLine, laneW, bottom - yLine);
+      ctx.fillStyle = th.sleeper;
+      for (let y = top - sleeperGap + scroll; y < yLine; y += sleeperGap) ctx.fillRect(x + 10 * U, y, laneW - 20 * U, 6 * U);
+      ctx.fillStyle = th.rail;
+      ctx.fillRect(x + 12 * U, top, 5 * U, yLine - top);
+      ctx.fillRect(x + laneW - 17 * U, top, 5 * U, yLine - top);
+
+      // Tiles, far ones first. A tile never runs into the one behind it: it is cut short so the lane shows between them.
+      // The engine lists tiles in the order of their notes, so the last in the list is the farthest.
+      behind[i] = -Infinity;
+      const tx = x + 28 * U;
+      const tw = laneW - 56 * U;
+      for (let k = pad.tiles.length - 1; k >= 0; k--) {
+        const t = pad.tiles[k];
+        if (t.lane !== i) continue;
+        const isHold = t.kind === "hold";
+        const head = t.state === "holding" && t.v > HIT_V ? HIT_V : t.v; // while held, the front waits on the line
+        const tail = Math.max(isHold ? t.vTail : head - TAP_H, behind[i] + GAP_V);
+        behind[i] = t.v;
+        const yTop = yBase + tail * ph;
+        const yHead = yBase + head * ph;
+        if (yTop > bottom || yHead < top || yHead - yTop < 2) continue;
+        if (isHold) holdTile(th, seat, tx, tw, yTop, yHead, t);
+        else tapTile(th, tx, tw, yTop, yHead, t, t.state === "hit" && hitAge < SQUASH_MS && Math.abs(t.v - HIT_V) < 0.12 ? Math.sin((Math.PI * hitAge) / SQUASH_MS) : 0);
+      }
+
+      // The hit line is the platform's edge. A hit flashes the foot zone white, and a miss dims it.
+      ctx.fillStyle = INK;
+      ctx.fillRect(x, yLine - 5 * U, laneW, 10 * U);
+      if (hitAge < FLASH_MS) { ctx.globalAlpha = 0.9 * (1 - hitAge / FLASH_MS); ctx.fillStyle = WHITE; ctx.fillRect(x, yLine, laneW, bottom - yLine); }
+      else if (missAge < FLASH_MS) { ctx.globalAlpha = 0.4 * (1 - missAge / FLASH_MS); ctx.fillStyle = INK; ctx.fillRect(x, yLine, laneW, bottom - yLine); }
       ctx.globalAlpha = 1;
+      ctx.restore();
+      if (n === 2) kit.text(i ? "Right foot" : "Left foot", x + laneW / 2, yLine + H * 0.07, H * 0.06, INK, true, "center", laneW - 24 * U);
+
+      // What the floor made of the last step in this lane: a word on a plate above the line.
+      const wordAge = now - wordAt[s];
+      if (wordAge < WORD_MS) {
+        const g = wordGrade[s];
+        const k = 1 + 0.25 * Math.max(0, 1 - wordAge / 120);
+        const w = wordW[g] * k;
+        const h = H * 0.08 * k;
+        const cy = yLine - H * 0.1 - easeOut(wordAge / 400) * H * 0.03;
+        ctx.globalAlpha = wordAge < 500 ? 1 : 1 - (wordAge - 500) / (WORD_MS - 500);
+        kit.plate(x + laneW / 2 - w / 2, cy - h / 2, w, h, h / 2, g === 1 ? GOLD : g === 2 ? WHITE : th.dull);
+        kit.text(WORDS[g], x + laneW / 2, cy + 2 * U, H * 0.06 * k, g === 3 ? WHITE : INK);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    // Whose lane it is, at the players' edge, in the seat's colour; white while a foot is down.
+    drawChip(kit, th, pad.spotId, px + pw / 2, bottom - H * 0.05, pw - 16 * U, lit ? WHITE : undefined);
+
+    // The floor sees each foot that is down: a ring in the seat's colour, where the foot is.
+    for (let k = 0; k < pad.feet.length; k++) {
+      const f = pad.feet[k];
+      const fx = px + f.u * pw;
+      const fy = yBase + f.v * ph;
+      kit.disc(fx, fy, H * 0.034, WHITE);
+      kit.disc(fx, fy, H * 0.02, seat.fill);
     }
   }
 
+  // A seat nobody has taken: its slot, with the light turned down.
+  function drawOpen(th, spot) {
+    const { W, H, U } = kit;
+    const r = spot.rect;
+    const top = Math.max(r.v * H, H * HUD_BOTTOM);
+    ctx.beginPath();
+    ctx.roundRect(r.u * W, top, r.w * W, (r.v + r.h) * H - top, kit.rad);
+    ctx.fillStyle = th.slotOpen;
+    ctx.fill();
+    kit.text(`Seat ${spot.id}`, (r.u + r.w / 2) * W, (r.v + r.h * 0.6) * H, H * 0.06, th.quiet, true, "center", r.w * W - 20 * U);
+  }
+
+  // view: { status, layout, pads: [{ spotId, lanes, tiles, feet }], players, team, songMs, song, transit, train, events, qr, qrNote }
   return function draw(view) {
     const { status, layout, pads, songMs, song, events } = view;
     const now = performance.now();
-    if (status !== prevStatus) {
-      if (status === "countdown" || status === "lobby") { shownScore = 0; word = null; flashes.clear(); bursts.length = 0; }
-      prevStatus = status;
-    }
-    const live = song && songMs != null && (status === "countdown" || status === "playing" || status === "paused");
-    if (!live) return padsDraw(view);
-
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    for (const e of events) onEvent(e, now);
-    const total = songSeconds(song) * 1000;
+    const dt = Math.min(50, now - lastNow);
+    lastNow = now;
+    const th = themeFor(view.train?.line ?? "Green-B");
+    const { W, H } = kit;
     ctx.globalAlpha = 1;
-    sky(W, H, songMs / total);
+    ctx.fillStyle = th.field;
+    ctx.fillRect(0, 0, W, H);
+    if (!ready) return; // the fonts come first, so no word is ever drawn in a stand-in face
 
-    const lanes = lanesOf(layout, W, H);
-    for (const lane of lanes) {
-      const pad = pads.find((p) => p.spotId === lane.spot.id);
-      const colour = seatColour(lane.spot.id);
-      const yLine = lane.y(HIT_V);
-      if (!pad) { // an empty seat: its lane is there, with the light turned down
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
-        ctx.fillRect(lane.x, 0, lane.w, H);
-        continue;
-      }
-      // Where the feet go: from the line to the players' edge, a little brighter than the rest.
-      ctx.fillStyle = "rgba(255,255,255,0.14)";
-      ctx.fillRect(lane.x, yLine, lane.w, H - yLine);
-
-      const n = Math.max(1, pad.lanes | 0);
-      const w = lane.w / n;
-      // Far tiles first. A tile never runs into the one behind it: it is cut short so light shows between them.
-      const behind = Array(n).fill(-Infinity); // for each lane, the front of the tile drawn before this one
-      for (const t of [...pad.tiles].sort((a, b) => a.v - b.v)) {
-        const x = lane.x + t.lane * w;
-        const yHead = lane.y(t.v);
-        const top = Math.max(t.kind === "hold" ? t.vTail : t.v - TAP_H, behind[t.lane] + GAP_V);
-        behind[t.lane] = t.v;
-        const yTop = lane.y(top);
-        if (yTop > H || yHead < 0 || yHead - yTop < 2) continue;
-        if (t.kind === "hold") holdTile(x, w, yHead, yTop, t.state, colour, yLine);
-        else tapTile(x, w, yHead, yTop, t.state);
-      }
-
-      // A hit lights the lane's foot zone in the seat's colour; a miss dims it.
-      for (let i = 0; i < n; i++) {
-        const f = flashes.get(`${lane.spot.id}:${i}`);
-        if (!f || now - f.at > FLASH_MS) continue;
-        const k = 1 - (now - f.at) / FLASH_MS;
-        ctx.globalAlpha = (f.miss ? 0.5 : 0.75) * k;
-        ctx.fillStyle = f.miss ? "#000" : colour;
-        ctx.fillRect(lane.x + i * w, yLine, w, H - yLine);
-        ctx.globalAlpha = 1;
-      }
-      for (const b of bursts) {
-        if (b.spotId !== lane.spot.id) continue;
-        const k = (now - b.at) / 450;
-        if (k >= 1) continue;
-        ctx.globalAlpha = 1 - k;
-        ctx.strokeStyle = WHITE;
-        ctx.lineWidth = Math.max(6, w * 0.035) * (1 - k * 0.6);
-        ctx.beginPath();
-        ctx.arc(lane.x + (b.lane + 0.5) * w, yLine, w * (0.12 + 0.3 * k), 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      // The hit line: a band of light across the lane.
-      const band = H * 0.035;
-      const g = ctx.createLinearGradient(0, yLine - band, 0, yLine + band);
-      g.addColorStop(0, "rgba(255,255,255,0)");
-      g.addColorStop(0.5, "rgba(255,255,255,0.7)");
-      g.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = g;
-      ctx.fillRect(lane.x, yLine - band, lane.w, band * 2);
-      ctx.fillStyle = WHITE;
-      ctx.fillRect(lane.x, yLine - 3, lane.w, 6);
+    if (status !== prevStatus) {
+      prevStatus = status;
+      screens.enter(status, now);
+      if (status === "lobby" || status === "countdown") { hitAt.fill(-1e9); missAt.fill(-1e9); wordAt.fill(-1e9); }
     }
-    while (bursts.length && now - bursts[0].at > 450) bursts.shift();
+    if (status === "lobby") return screens.lobby(th, view, now);
+    if (status === "results") return screens.results(th, view, now);
+    if (!song || songMs == null) return;
 
-    // Lines between the lanes.
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    for (let i = 1; i < lanes.length; i++) ctx.fillRect(lanes[i].x - 2, 0, 4, H);
-
-    // Every tracked foot, so players see the floor knows where they are.
-    for (const f of view.feet ?? []) {
-      const lane = lanes.find((l) => f.u * W >= l.x && f.u * W < l.x + l.w);
-      const x = f.u * W, y = f.v * H, r = H * 0.05;
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
-      glow.addColorStop(0, "rgba(255,255,255,0.95)");
-      glow.addColorStop(0.45, lane ? seatColour(lane.spot.id) : WHITE);
-      glow.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
+    for (let i = 0; i < events.length; i++) onEvent(events[i], now);
+    screens.clock(th, view, now);
+    screens.score(th, view, now, dt);
+    for (let i = 0; i < layout.spots.length; i++) {
+      const spot = layout.spots[i];
+      let pad = null;
+      for (let k = 0; k < pads.length; k++) if (pads[k].spotId === spot.id) pad = pads[k];
+      if (pad) drawPad(th, pad, spot, songMs, now);
+      else drawOpen(th, spot);
     }
-
-    hud(view, W, H, now);
-
-    if (songMs < -1500) { // the song's title, until the first tiles are well on their way
-      ctx.globalAlpha = clamp01((-1500 - songMs) / 1000);
-      text(song.title, W / 2, H * 0.88, H * 0.075, WHITE, W * 0.9);
-      ctx.globalAlpha = 1;
-    }
-    if (status === "countdown") {
-      const remain = -TRAVEL_MS - songMs;
-      const n = Math.min(3, Math.max(1, Math.ceil(remain / 1000)));
-      const e = clamp01((n * 1000 - remain) / 1000); // 0 when the number lands, 1 as the next one is due
-      ctx.globalAlpha = e < 0.75 ? 1 : 1 - ((e - 0.75) / 0.25) * 0.8;
-      text(String(n), W / 2, H * 0.55, H * 0.4 * (1 + 0.6 * Math.max(0, 1 - e / 0.2)));
-      ctx.globalAlpha = 1;
-    } else if (status === "paused") {
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(0, 0, W, H);
-      text("Paused", W / 2, H * 0.5, H * 0.2);
-    }
+    screens.title(th, song, songMs);
+    if (status === "countdown") screens.countdown(songMs);
+    else if (status === "paused") screens.paused(now);
   };
 }
