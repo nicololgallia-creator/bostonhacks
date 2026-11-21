@@ -1,0 +1,18 @@
+{
+  "endpoint": "/api/ask",
+  "body": { "question": "{q}" },
+  "cases": [
+    {
+      "q": "How do I appeal a parking ticket?",
+      "expect": { "topic": "parking", "steps.length": ">=4", "notes.length": "<=1" }
+    },
+    {
+      "q": "How do I get money for my club?",
+      "expect": { "topic": "fund", "steps": "exists" }
+    },
+    {
+      "q": "Where is the library?",
+      "expect": { "summary": "exists", "summary.length": ">=20", "topic": "!undefined|error|sorry" }
+    }
+  ]
+}

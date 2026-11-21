@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+dist/
+build/
+.next/
+.vercel/
+shots/
+
+# Private: vault copies and copied skills stay off the public repo
+notes/
+.claude/skills/
+.claude/settings.local.json
