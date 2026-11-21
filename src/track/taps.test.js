@@ -49,18 +49,18 @@ test("a foot sliding slowly up or down gives no lift and no tap", () => {
   assert.ok([...up.lifted.values(), ...down.lifted.values()].every((l) => !l));
 });
 
-test("a foot held up for two seconds is lifted the whole time and taps once when it lands", () => {
-  const { taps, lifted } = play(createTapDetector(), lift(100, 2100), 0, 2500);
-  assert.deepEqual(taps, [{ spotId: 1, foot: 0, atMs: 2100 }]);
-  for (let t = 100; t < 2100; t += 20) assert.equal(lifted.get(t), true, `lifted at ${t}`);
-  assert.equal(lifted.get(2100), false);
+test("a foot held up for 1.2 seconds is lifted the whole time and taps once when it lands", () => {
+  const { taps, lifted } = play(createTapDetector(), lift(100, 1300), 0, 1700);
+  assert.deepEqual(taps, [{ spotId: 1, foot: 0, atMs: 1300 }]);
+  for (let t = 120; t < 1300; t += 20) assert.equal(lifted.get(t), true, `lifted at ${t}`);
+  assert.equal(lifted.get(1300), false);
 });
 
 test("a foot that shifts up and stays is lifted only until maxLiftMs, then is the new ground, with no tap", () => {
   const { taps, lifted } = play(createTapDetector(), (t) => (t >= 500 ? GROUND - 0.03 : GROUND), 0, 5000);
   assert.equal(lifted.get(520), true);
-  assert.equal(lifted.get(3480), true);
-  assert.equal(lifted.get(3540), false);
+  assert.equal(lifted.get(1980), true);
+  assert.equal(lifted.get(2040), false);
   assert.equal(lifted.get(5000), false);
   assert.equal(taps.length, 0);
 });
@@ -94,7 +94,8 @@ test("two feet and two seats do not mix", () => {
 test("the same feet come back with lifted added and nothing else changed", () => {
   const f = { spotId: 3, foot: 1, x: 0.4, y: 0.7, shin: 0.2 };
   const r = createTapDetector().update(0, [f]);
-  assert.deepEqual(r, { feet: [{ ...f, lifted: false }], taps: [] });
+  assert.deepEqual(r.feet, [{ ...f, lifted: false }]);
+  assert.deepEqual(r.taps, []);
 });
 
 test("a dropout in the middle of a lift does not fire, and the real landing still taps once", () => {
@@ -148,15 +149,20 @@ test("options replace the defaults", () => {
 // The real recording: one seated person tapping, on the DJI. qa/feet/real-taps-1.json is the old camera shape,
 // {t, feet: [{x, y, person}]}. Left foot in the picture is foot 0, right is foot 1. A frame without exactly two feet
 // cannot be told apart, so it is left out.
-test("on a real recording of one person tapping, finds about as many taps as the person made", () => {
+test("on a real recording of one person tapping, finds about as many taps as the person made", (t) => {
   const rec = JSON.parse(readFileSync(new URL("../../qa/feet/real-taps-1.json", import.meta.url), "utf8"));
   const det = createTapDetector(); // no shin: the plain 0.02 threshold
   const taps = [];
+  const seen = [];
   for (const fr of rec.frames) {
     if (fr.feet.length !== 2) continue;
     const [a, b] = [...fr.feet].sort((p, q) => p.x - q.x);
-    taps.push(...det.update(fr.t, [{ spotId: 1, foot: 0, x: a.x, y: a.y }, { spotId: 1, foot: 1, x: b.x, y: b.y }]).taps);
+    const r = det.update(fr.t, [{ spotId: 1, foot: 0, x: a.x, y: a.y }, { spotId: 1, foot: 1, x: b.x, y: b.y }]);
+    taps.push(...r.taps);
+    if (fr.t >= 3000) seen.push(...r.debug);
   }
+  const mid = (xs) => [...xs].sort((p, q) => p - q)[xs.length >> 1].toFixed(4);
+  t.diagnostic(`real recording, from 3 s: shake median ${mid(seen.map((d) => d.shake))}, highest ${Math.max(...seen.map((d) => d.shake)).toFixed(4)}; threshold median ${mid(seen.map((d) => d.threshold))}, highest ${Math.max(...seen.map((d) => d.threshold)).toFixed(4)} (floor 0.02)`);
   for (const foot of [0, 1]) {
     const mine = taps.filter((x) => x.foot === foot && x.atMs >= 3000 && x.atMs <= 39500);
     assert.ok(mine.length >= 25 && mine.length <= 40, `foot ${foot}: ${mine.length} taps`);
@@ -206,7 +212,7 @@ test("seat mode: feet swapping names every frame make no taps, where separate fe
   // feet resting 0.04 apart in height, names flipping each frame
   assert.equal(seat(rest(0.8), rest(0.84), { rename: flip }).taps.length, 0);
   assert.ok(seat(rest(0.8), rest(0.84), { rename: flip }).handed.every((fs) => !fs[0].lifted));
-  const apart = seat(rest(0.8), rest(0.84), { rename: flip, lanes: {} }).handed; // separate feet: the flips read as lifts
+  const apart = seat(rest(0.8), rest(0.9), { rename: flip, lanes: {} }).handed; // separate feet, 0.1 apart (a one-frame jump past twice the threshold counts at once): the flips read as lifts
   assert.ok(apart.some((fs) => fs.some((f) => f.lifted)), "the flips fool the two-foot detector");
   // and a real tap still counts with names flipping
   assert.deepEqual(seat(rest(0.8), upBetween(0.84, 500, 700, 0.09), { rename: flip }).taps.map((x) => x.atMs), [700]);
@@ -228,12 +234,12 @@ test("seat mode: a foot that drops out and comes back, even for two seconds, is 
   assert.equal(seat(rest(0.8), (t) => (t >= 1000 && t < 3000 ? undefined : 0.84), { to: 6000 }).taps.length, 0);
 });
 
-test("seat mode: a lone foot works, jitter gives nothing, and a foot held up for two seconds taps once when it lands", () => {
+test("seat mode: a lone foot works, jitter gives nothing, and a foot held up for 1.2 seconds taps once when it lands", () => {
   assert.deepEqual(seat(upBetween(0.8, 500, 700), () => undefined).taps.map((x) => x.atMs), [700]);
   assert.equal(seat((t) => 0.8 + ((t / 20) % 2 ? 0.003 : -0.003), rest(0.84)).taps.length, 0);
-  const held = seat(rest(0.8), upBetween(0.84, 500, 2500, 0.09), { to: 4000 });
-  assert.deepEqual(held.taps.map((x) => x.atMs), [2500]);
-  assert.ok(held.handed.slice(Math.round(600 / 20), Math.round(2400 / 20)).every((fs) => fs[0].lifted));
+  const held = seat(rest(0.8), upBetween(0.84, 500, 1700, 0.09), { to: 3000 });
+  assert.deepEqual(held.taps.map((x) => x.atMs), [1700]);
+  assert.ok(held.handed.slice(Math.round(600 / 20), Math.round(1600 / 20)).every((fs) => fs[0].lifted));
 });
 
 test("seat mode: only the seats with one lane are merged; a seat with two lanes keeps both feet, and seats do not mix", () => {
@@ -256,4 +262,98 @@ test("seat mode: a seat that goes from two lanes to one does not carry a stale l
   assert.equal(det.update(400, feet(0.06), {}).feet.find((f) => f.foot === 0).lifted, true); // lifted in two-lane mode
   const r = det.update(420, feet(0), ONE); // the next song has one lane: this seat starts its own track
   assert.deepEqual(r.feet.map((f) => f.lifted), [false]);
+});
+
+// Tune: the threshold follows the noise, a lift must last, a foot that comes or goes is not a lift, a shift is not a tap.
+// Made-up traces that look like two people on the real camera: smaller people, more shake, a foot dropping out now and then.
+// noise(t, k) is a repeatable "random" number between -1 and 1.
+const noise = (t, k) => { const x = Math.sin(t * 12.9898 + k * 78.233) * 43758.5453; return 2 * (x - Math.floor(x)) - 1; };
+const SHAKE = 0.008;
+const shaky = (f, k, amp = SHAKE) => (t) => { const y = f(t); return y === undefined ? undefined : y + amp * noise(t, k); };
+const TWO = { lanes: {} }; // both feet on their own tracks
+const modes = [["seat mode", { lanes: ONE }], ["two-foot mode", TWO]];
+// Ten real lifts of the higher foot: 200 ms up, once a second from 2 s.
+const tenLifts = (y, h = 0.035) => (t) => (t >= 2000 && t < 12000 && t % 1000 < 200 ? y - h : y);
+// The higher foot is not seen on frames 3 and 4 of every 7.
+const dropsSometimes = (f) => (t) => ([3, 4].includes(Math.round(t / 20) % 7) ? undefined : f(t));
+
+for (const [name, opt] of modes) {
+  test(`${name}: two feet resting with a shake of 0.008 and a foot dropping out every few frames give no taps in 30 seconds`, () => {
+    const r = seat(dropsSometimes(shaky(rest(0.8), 1)), shaky(rest(0.82), 2), { ...opt, to: 30000 });
+    assert.equal(r.taps.length, 0);
+    assert.ok(r.handed.every((fs) => fs.every((f) => !f.lifted)));
+  });
+
+  test(`${name}: a shake of 0.012, as with two people further back, also gives no taps, though it is past the fixed floor`, () => {
+    const r = seat(dropsSometimes(shaky(rest(0.8), 1, 0.012)), shaky(rest(0.82), 2, 0.012), { ...opt, to: 30000 });
+    assert.equal(r.taps.length, 0);
+  });
+
+  test(`${name}: the same shake with ten real lifts of 0.035 gives ten taps, dropouts or not`, () => {
+    const lifts = tenLifts(0.8);
+    assert.equal(seat(shaky(lifts, 1), shaky(rest(0.82), 2), { ...opt, to: 14000 }).taps.length, 10);
+    assert.equal(seat(dropsSometimes(shaky(lifts, 1)), shaky(rest(0.82), 2), { ...opt, to: 14000 }).taps.length, 10);
+  });
+
+  test(`${name}: a slow drift with the same shake gives no taps`, () => {
+    const drift = (t) => 0.8 - (0.1 * Math.min(t, 10000)) / 10000; // 0.1 higher over 10 seconds
+    const r = seat(shaky(drift, 1), shaky((t) => drift(t) + 0.02, 2), { ...opt, to: 14000 });
+    assert.equal(r.taps.length, 0);
+  });
+
+  test(`${name}: a foot that shifts 0.03 and stays gives no tap, up or down, and its ground follows`, () => {
+    for (const to of [-0.03, 0.03]) {
+      const r = seat(shaky((t) => (t >= 3000 ? 0.8 + to : 0.8), 1), shaky((t) => (t >= 3000 ? 0.82 + to : 0.82), 2), { ...opt, to: 9000 });
+      assert.equal(r.taps.length, 0, `shift ${to}`);
+      assert.ok(r.handed.slice(Math.round(6000 / 20)).every((fs) => fs.every((f) => !f.lifted)), `settled after ${to}`);
+    }
+  });
+
+  test(`${name}: a single frame spike of 0.03 is never a tap`, () => {
+    const spiky = (t) => (t % 1000 === 0 && t > 0 ? 0.77 : 0.8);
+    assert.equal(seat(shaky(spiky, 1), shaky(rest(0.84), 2), { ...opt, to: 10000 }).taps.length, 0);
+  });
+}
+
+test("seat mode: a foot flickering in and out every other frame, the higher or the lower one, gives no taps", () => {
+  const everyOther = (f) => (t) => (Math.round(t / 20) % 2 ? undefined : f(t));
+  assert.equal(seat(everyOther(shaky(rest(0.8), 1)), shaky(rest(0.82), 2), { to: 30000 }).taps.length, 0);
+  assert.equal(seat(shaky(rest(0.8), 1), everyOther(shaky(rest(0.82), 2)), { to: 30000 }).taps.length, 0);
+  assert.equal(seat(everyOther(shaky(rest(0.8), 1)), shaky(rest(0.84), 2), { to: 30000 }).taps.length, 0); // a bigger gap between the feet
+});
+
+test("seat mode: the higher foot dropping out in the middle of its own lift does not end the lift", () => {
+  const y = (t) => (t >= 640 && t < 700 ? undefined : upBetween(0.8, 500, 900)(t));
+  const r = seat(y, rest(0.87));
+  assert.deepEqual(r.taps.map((x) => x.atMs), [900]);
+  assert.equal(r.handed[Math.round(680 / 20)][0].lifted, true);
+});
+
+test("the threshold follows the shake: a bigger shake raises it past what a real lift reaches, and shakeMultiple 0 turns that off", () => {
+  const run = (amp, options = {}, h = 0) => {
+    const det = createTapDetector(options);
+    const taps = [];
+    let last;
+    for (let t = 0; t <= 12000; t += 20) {
+      last = det.update(t, [{ spotId: 1, foot: 0, x: 0.5, y: 0.8 + amp * noise(t, 1) - (t >= 10000 && t < 10200 ? h : 0), shin: 0.2 }]);
+      taps.push(...last.taps);
+    }
+    return { taps: taps.length, ...last.debug[0] };
+  };
+  assert.ok(run(0.008).threshold < 0.025); // 0.008 of shake is about the fixed floor
+  const big = run(0.02); // a shake of 0.02, bigger than the floor
+  assert.ok(big.threshold > 0.04 && big.shake > 0.008, JSON.stringify(big));
+  // over 12 s of that shake the fixed floor alone reads many taps, the threshold that follows it far fewer
+  assert.ok(run(0.02, { shakeMultiple: 0 }).taps >= 3 * Math.max(1, big.taps), `${run(0.02, { shakeMultiple: 0 }).taps} against ${big.taps}`);
+  // and a lift well past it still taps
+  assert.equal(run(0.02, {}, 0.15).taps, big.taps + 1);
+});
+test("update() also returns what each track measured: ground, threshold and shake, one entry for a seat with one lane", () => {
+  const det = createTapDetector();
+  let r;
+  for (let t = 0; t <= 2000; t += 20) r = det.update(t, [0, 1].map((foot) => ({ spotId: 1, foot, x: 0.3 + foot * 0.1, y: 0.8 + foot * 0.02 + 0.003 * noise(t, foot), shin: 0.2 })), ONE);
+  assert.equal(r.debug.length, 1);
+  assert.deepEqual(Object.keys(r.debug[0]), ["spotId", "foot", "ground", "threshold", "shake"]);
+  assert.ok(Math.abs(r.debug[0].ground - 0.8) < 0.01 && r.debug[0].threshold >= 0.02 && r.debug[0].shake > 0);
+  assert.equal(det.update(2020, [{ spotId: 1, foot: 0, x: 0.3, y: 0.8 }, { spotId: 1, foot: 1, x: 0.4, y: 0.82 }, { spotId: 2, foot: 0, x: 0.6, y: 0.7 }], {}).debug.length, 3);
 });
