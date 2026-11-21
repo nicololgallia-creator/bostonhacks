@@ -60,13 +60,14 @@ export const spring = (t) => (t < 0 || t > 0.6 ? 0 : Math.exp(-t * 10) * Math.co
 const DISPLAY = '"Lilita One", "Arial Black", system-ui, sans-serif';
 const BODY = 'Nunito, system-ui, sans-serif';
 const FONTS = [
-  ["Lilita One", "../pilot/fonts/lilita-one-latin.woff2", { weight: "400" }],
-  ["Nunito", "../pilot/fonts/nunito-latin.woff2", { weight: "600 900" }],
+  // Each address is written out in full here: the build only carries a font file along when it sees the literal path.
+  ["Lilita One", new URL("../pilot/fonts/lilita-one-latin.woff2", import.meta.url).href, { weight: "400" }],
+  ["Nunito", new URL("../pilot/fonts/nunito-latin.woff2", import.meta.url).href, { weight: "600 900" }],
 ];
 // Resolves once both fonts are in, so the canvas never draws a word in a stand-in face.
 export function loadFonts() {
   return Promise.all(FONTS.map(([name, path, descriptors]) =>
-    new FontFace(name, `url(${new URL(path, import.meta.url).href})`, descriptors).load().then((face) => document.fonts.add(face))))
+    new FontFace(name, `url(${path})`, descriptors).load().then((face) => document.fonts.add(face))))
     .then(() => true)
     .catch((err) => { console.warn("The floor's fonts did not load, so it uses a system font:", err.message); return false; });
 }
