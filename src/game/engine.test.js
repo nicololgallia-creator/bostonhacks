@@ -221,3 +221,12 @@ test("the song ends once every tile is judged", () => {
   assert.equal(end.counts.miss, end.total);
   assert.equal(end.grade, "C");
 });
+
+test("createGame takes a lane count for one pad, and still takes players", () => {
+  const pad = createGame({ song: tiny, lanes: 3 });
+  assert.equal(pad.lanes, 3);
+  assert.deepEqual(pad.update(0, NONE).tiles.map((t) => t.lane), [0, 1, 2]);
+  const r = pad.update(500, [{ u: 0.5, v: 0.9 }]); // the middle of 3 lanes is lane 1, the second tile
+  assert.deepEqual(r.events.map((e) => [e.type, e.lane, e.grade]), [["hit", 1, "perfect"], ["miss", 0, "miss"]]);
+  assert.equal(createGame({ song: tiny, players: 2 }).lanes, 6);
+});

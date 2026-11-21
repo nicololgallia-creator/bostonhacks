@@ -35,8 +35,8 @@ export const gradeFor = (hits, total) => {
   return share >= 0.95 ? "S" : share >= 0.85 ? "A" : share >= 0.7 ? "B" : "C";
 };
 
-export function createGame({ song, players }) {
-  const lanes = lanesFor(players);
+// `lanes` is how many lanes the pad has. `players` still works for the old stage: it picks the lanes.
+export function createGame({ song, players, lanes = lanesFor(players) }) {
   const beatMs = 60000 / song.bpm;
   const tiles = song.notes.map((n, id) => {
     const ms = n.beats * beatMs;

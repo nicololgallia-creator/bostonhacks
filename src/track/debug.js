@@ -1,10 +1,32 @@
 // Camera check page: the live picture with a dot on every foot. Works with no camera too:
 // track.html?src=/qa/person.jpg (an image) or ?src=<video file url>.
+// track.html?replay=/qa/feet/<name>.json runs the page from a recording instead. Record saves one.
 import { createCameraFeet } from "./camera.js";
+import { createRecorder, createReplay, loadRecording } from "./record.js";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage"), cameraSelect = $("camera"), modelSelect = $("model"), stats = $("stats");
-const src = new URLSearchParams(location.search).get("src");
+const params = new URLSearchParams(location.search);
+const src = params.get("src"), replay = params.get("replay");
+let recorder = null; // set while Record is on
+
+const recordButton = document.createElement("button");
+recordButton.textContent = "Record";
+recordButton.style.cssText = "font: inherit; min-height: 44px; padding: 0 16px;";
+recordButton.hidden = !!replay;
+stats.before(recordButton);
+recordButton.addEventListener("click", () => {
+  if (!recorder) { recorder = createRecorder(); recordButton.textContent = "Stop and save"; return; }
+  const done = recorder;
+  recorder = null;
+  recordButton.textContent = "Record";
+  if (done.count() === 0) return showError("Nothing was recorded. Wait for the camera to start, record for a few seconds, then press Stop and save.");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(done.toJSON())], { type: "application/json" }));
+  link.download = `feet-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
 const CAMERA_KEY = "track:camera";
 
 let tracker = null;
@@ -57,6 +79,13 @@ function makeSource() {
   return { el: video, ready };
 }
 
+// A recording holds no picture, so the dots are drawn on a black box with the camera's 16:9 shape.
+function blankPicture() {
+  const box = document.createElement("div");
+  box.style.cssText = "width: 960px; max-width: 100%; aspect-ratio: 16 / 9; background: #111;";
+  return box;
+}
+
 function draw(canvas, el, poses, feet) {
   const w = (canvas.width = el.clientWidth), h = (canvas.height = el.clientHeight);
   const g = canvas.getContext("2d");
@@ -77,17 +106,19 @@ async function restart() {
   showError("");
   stats.textContent = "Starting...";
   try {
-    const { el, ready } = makeSource();
+    const recording = replay ? await loadRecording(replay) : null;
+    const { el, ready } = recording ? { el: blankPicture(), ready: Promise.resolve() } : makeSource();
     await ready;
     const canvas = document.createElement("canvas");
     stage.append(el, canvas);
-    tracker = createCameraFeet({ video: el, model: modelSelect.value });
+    tracker = recording ? createReplay(recording) : createCameraFeet({ video: el, model: modelSelect.value });
     const mine = tracker;
     const delegate = await mine.start();
     const next = el.tagName === "IMG" ? (f) => setTimeout(f, 100) : requestAnimationFrame; // a still picture does not need 30 fps
     const loop = () => {
       if (id !== run) return;
       const feet = mine.read();
+      if (recorder) recorder.add(performance.now(), feet);
       draw(canvas, el, mine.poses(), feet);
       stats.textContent = `${mine.fps()} fps, ${delegate}, ${feet.length} feet`;
       next(loop);
@@ -100,8 +131,9 @@ async function restart() {
   }
 }
 
-cameraSelect.parentElement.hidden = !!src;
-modelSelect.value = new URLSearchParams(location.search).get("model") || "lite";
+cameraSelect.parentElement.hidden = !!src || !!replay;
+modelSelect.parentElement.hidden = !!replay;
+modelSelect.value = params.get("model") || "lite";
 modelSelect.addEventListener("change", restart);
 cameraSelect.addEventListener("change", () => { localStorage.setItem(CAMERA_KEY, cameraSelect.value); restart(); });
 restart();

@@ -1,13 +1,28 @@
 // The link between the phone page and the stage page: every message one page sends
 // goes to every other page that is connected. One stage, so no rooms.
-// It rides on Vite's own server, so there is one command and one port.
+// It rides on the dev server, so there is one command and one port.
+import os from "node:os";
 import { WebSocketServer } from "ws";
+
+// The addresses a phone on the same Wi-Fi or hotspot can open. The stage runs on localhost
+// (the browser only allows the camera there), so it asks the server for these to draw the QR code.
+function lanUrls(port) {
+  return Object.values(os.networkInterfaces())
+    .flat()
+    .filter((a) => a && a.family === "IPv4" && !a.internal)
+    .map((a) => `http://${a.address}:${port}/`);
+}
 
 export function linkPlugin() {
   const attach = (server) => {
+    server.middlewares.use("/lan", (req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ urls: lanUrls(server.config.server.port ?? 5173) }));
+    });
+
     const wss = new WebSocketServer({ noServer: true });
     server.httpServer.on("upgrade", (req, socket, head) => {
-      if (req.url !== "/link") return; // leave Vite's own reload socket alone
+      if (req.url !== "/link") return; // leave the dev server's own reload socket alone
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws));
     });
     wss.on("connection", (ws) => {
