@@ -49,6 +49,15 @@
   --seat-3: #FFD43B;  --seat-3-dim: #3C351A;  --seat-3-soft: #C2A231;
   --seat-4: #7CFF6B;  --seat-4-dim: #223D24;  --seat-4-soft: #60C355;
 
+  /* MBTA line colours, the values the MBTA's own API publishes for each route (checked
+     21 Nov 2026). Only for the small dot that names a line. They are never seat colours. */
+  --line-red: #DA291C;
+  --line-orange: #ED8B00;
+  --line-blue: #003DA5;
+  --line-green: #00843D;
+  --line-mattapan: #DA291C;
+  --line-orange-ink: #0B0D12;  /* the letter on the orange dot: white would be 2.5:1, this is 8:1 */
+
   /* Type. One family. A fixed scale, because a tool is read at one distance. */
   --font: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
   --text-xs: 0.8125rem;   /* 13 */

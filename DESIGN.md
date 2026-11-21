@@ -30,6 +30,7 @@ A stranger on a platform or a train scanned a code. In ten seconds, with one thu
 | Seat 2 | `--seat-2`, `-dim`, `-soft` | `#FF4FA3`, `#3C1A2F`, `#C23F7F` | pink |
 | Seat 3 | `--seat-3`, `-dim`, `-soft` | `#FFD43B`, `#3C351A`, `#C2A231` | yellow |
 | Seat 4 | `--seat-4`, `-dim`, `-soft` | `#7CFF6B`, `#223D24`, `#60C355` | green |
+| Line | `--line-red`, `-orange`, `-blue`, `-green`, `-mattapan`, `-orange-ink` | `#DA291C`, `#ED8B00`, `#003DA5`, `#00843D`, `#DA291C`, `#0B0D12` | the dot that names a MBTA line (values from the MBTA's own API). Never a seat colour, never anything else |
 | Type | `--font` | Bricolage Grotesque, self-hosted | the only family |
 | | `--text-xs` to `--text-num` | 13, 15, 17, 22, 28, 40, 72 px | fixed scale, no fluid sizes |
 | Space | `--space-1` to `--space-9` | 4, 8, 12, 16, 20, 24, 32, 48, 64 px | every gap and padding |
@@ -59,6 +60,8 @@ Font: Bricolage Grotesque, SIL Open Font License 1.1, Mathieu Triay. Files in `s
 **Buttons.** Two kinds. Primary: off-white fill, ink text, 56px tall, full width, the only shadow in the app, one per screen. Quiet: `--surface-2` fill, 52px tall, sits in the action row, up to two side by side. Radius 14. Label names the action ("Join", "Change seat", "Leave"). Press scales to 0.98 in 120ms. Hover only where there is a real pointer. Keyboard focus is a 2px white ring with a 3px offset.
 
 **Pads (the one card).** There are no other cards, and nothing sits inside a pad but its number, its lanes and a name. Four states, each readable without colour: open (dim fill, 2px ring, "Sit here"), taken (flat, soft numeral, their name), yours (solid seat colour, ink text, your name), idle (flat, nobody there, used after you sit). A pad is a button only in the open state, and in yours while changing seats. The lanes inside are the real lane count (3 seated, 4 standing) with the square for the feet drawn brighter at the foot.
+
+**Rows (the ride flow, `src/phone/ride.css`).** The steps after "Pick the music" are one list of rows, one step at a time. A row is a quiet button that is 56px or taller (88px for a two-way choice): a title, an optional line under it in `--text-2`, and at its end a line dot or a time. Hover is `--surface-3`, press scales to 0.98, a chosen row gets a 2px off-white ring and a numbered circle (never a seat colour). A line dot is a 28px circle in the line's colour with its letter in it, so it reads without colour; the MBTA's colours are used for lines and nothing else. Back is at the top of every step, so it is never under a long list; the one action sits at the foot, stuck while a list scrolls. The only scrolling the remote has is a list that is longer than the screen.
 
 **Inputs.** 72px tall, 28px text so it reads at arm's length, off-white caret, no border. Focus is a 2px white inset ring. The label is the heading above it. One hint line sits below. Font never under 16px, so iPhones do not zoom. Names are 10 characters at most and the field stops there.
 

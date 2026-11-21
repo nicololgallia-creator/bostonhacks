@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { listStops, nextTrains, rideSeconds } from "./api.js";
+import { listStops, nextTrains, rideSeconds, stopsOnRoute } from "./api.js";
 
 const realFetch = globalThis.fetch;
 const realWarn = console.warn;
@@ -86,6 +86,33 @@ test("rideSeconds uses the prediction, then the schedule, then throws", async ()
   restore();
 });
 
+test("stopsOnRoute lists stations in trip order, branches after each other, no repeats", async () => {
+  const platform = (id, station, name) => ({ type: "stop", id, attributes: { name }, relationships: { parent_station: { data: station && { id: station } } } });
+  const trip = (id, ...stopIds) => ({ type: "trip", id, relationships: { stops: { data: stopIds.map((s) => ({ id: s })) } } });
+  const pattern = (id, typicality, tripId) => ({ id, attributes: { typicality }, relationships: { representative_trip: { data: { id: tripId } } } });
+  let asked;
+  fake((u) => {
+    asked = u;
+    return { body: {
+      data: [pattern("p1", 1, "t1"), pattern("p2", 1, "t2"), pattern("shuttle", 5, "t3")],
+      included: [
+        platform("1", "place-a", "Alpha"), platform("2", "place-b", "Bravo"), platform("3", "place-c", "Charlie"),
+        platform("4", "place-b", "Bravo"), platform("5", null, "Delta"), platform("9", "place-z", "Shuttle stop"),
+        trip("t1", "1", "2", "3"), trip("t2", "4", "5"), trip("t3", "9"),
+      ],
+    } };
+  });
+  const list = await stopsOnRoute("Red", 1);
+  assert.deepEqual(list, [{ id: "place-a", name: "Alpha" }, { id: "place-b", name: "Bravo" }, { id: "place-c", name: "Charlie" }, { id: "5", name: "Delta" }]);
+  assert.equal(asked.searchParams.get("filter[route]"), "Red");
+  assert.equal(asked.searchParams.get("filter[direction_id]"), "1");
+
+  fake(() => ({ body: { data: [], included: [] } }));
+  await assert.rejects(stopsOnRoute("Red"), /lists no stops/);
+  restore();
+  await assert.rejects(stopsOnRoute(""), /Pick a line/);
+});
+
 // Costs about 11 of the 20 requests a minute a keyless network gets, so it only runs when asked:
 // MBTA_LIVE=1 node --test src/mbta/api.test.js
 test("live API: stops, next trains at Kenmore, Kenmore to Park Street", { skip: !process.env.MBTA_LIVE }, async () => {
@@ -103,4 +130,7 @@ test("live API: stops, next trains at Kenmore, Kenmore to Park Street", { skip: 
   const ride = await rideSeconds({ fromStopId: "place-kencl", toStopId: "place-pktrm", routeId: "Green-B", directionId: 1 });
   assert.ok(ride.seconds > 120 && ride.seconds < 1800, `odd ride time ${ride.seconds}`);
   console.log(`Kenmore to Park Street: ${ride.seconds} s (${ride.source})`);
+
+  const greenB = (await stopsOnRoute("Green-B", 1)).map((s) => s.id);
+  assert.ok(greenB.indexOf("place-kencl") >= 0 && greenB.indexOf("place-kencl") < greenB.indexOf("place-pktrm"), "Kenmore should come before Park Street eastbound");
 });

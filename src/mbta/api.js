@@ -46,6 +46,33 @@ export function listStops() {
   return stopsCache;
 }
 
+// The stations of one line in the order a train going `directionId` visits them. Where a line splits
+// (Red), the first branch's stations come first, then the second's that are not already listed.
+export async function stopsOnRoute(routeId, directionId = 0) {
+  if (!routeId) throw new Error("Pick a line first.");
+  const j = await get("/route_patterns", {
+    "filter[route]": routeId,
+    "filter[direction_id]": directionId,
+    include: "representative_trip.stops",
+    "fields[route_pattern]": "typicality",
+    "fields[stop]": "name",
+    "fields[trip]": "headsign",
+  });
+  const inc = included(j);
+  const typical = j.data.filter((p) => p.attributes.typicality === 1);
+  const stations = new Map();
+  for (const pattern of typical.length ? typical : j.data) {
+    const trip = inc.get(`trip:${pattern.relationships.representative_trip.data?.id}`);
+    for (const { id } of trip?.relationships.stops.data ?? []) {
+      const stop = inc.get(`stop:${id}`);
+      const stationId = stop?.relationships.parent_station.data?.id ?? id;
+      if (stop && !stations.has(stationId)) stations.set(stationId, { id: stationId, name: stop.attributes.name });
+    }
+  }
+  if (!stations.size) throw new Error(`The MBTA lists no stops for the ${routeId} line in that direction. Pick a different train.`);
+  return [...stations.values()];
+}
+
 export async function nextTrains(stopId) {
   if (!stopId) throw new Error("Pick a stop first.");
   const j = await get("/predictions", {

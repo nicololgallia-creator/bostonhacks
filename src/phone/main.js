@@ -4,6 +4,7 @@
 import "../tokens.css";
 import "./phone.css";
 import { openLink } from "../link.js";
+import { openRide } from "./ride.js";
 
 const NAME_MAX = 10; // the longest name that still fits a pad when four people play
 const store = {
@@ -27,7 +28,8 @@ let downSince = Date.now();
 let lastJoinAt = 0;
 let choosing = false;  // seated, but looking for another seat
 let choosingFrom = null;
-let view = null;       // "name" or "seats"
+let ride = null;       // the pick-the-music flow while it is open (ride.js); it owns the screen
+let view = null;      // "name" or "seats"
 let padsKey = "";
 let drawn = "";
 
@@ -50,6 +52,7 @@ function onMessage(msg) {
   if (msg?.type !== "state" || !Array.isArray(msg.players) || !Array.isArray(msg.layout?.spots)) return;
   state = msg;
   stateAt = Date.now();
+  ride?.onState(msg);
   // The stage forgets players when its page reloads. Join again if we are missing.
   if (wantsIn && !me() && Date.now() - lastJoinAt > 1500) join();
   render();
@@ -83,6 +86,7 @@ setInterval(showStatus, 1000);
 // ---- Screens ----
 
 function render() {
+  if (ride) return;
   const want = wantsIn ? "seats" : "name";
   if (want !== view) {
     view = want;
@@ -147,7 +151,7 @@ function mountSeats(layout) {
             <span class="who"></span>
           </button>`).join("")}
       </div>
-      <span></span>
+      <div class="more"></div>
       <div class="actions"></div>
     </section>`;
 }
@@ -163,7 +167,7 @@ function syncSeats() {
   const seat = mine?.spotId ?? null;
   if (choosing && seat !== choosingFrom) choosing = false; // moved, so done choosing
   const players = state?.players ?? [];
-  const snapshot = `${mine?.name}|${seat}|${choosing}|${players.map((p) => `${p.spotId}${p.name}`)}`;
+  const snapshot = `${mine?.name}|${seat}|${choosing}|${state?.status}|${players.map((p) => `${p.spotId}${p.name}`)}`;
   if (snapshot === drawn) return;
   drawn = snapshot;
 
@@ -217,10 +221,19 @@ function syncSeats() {
   if (choosing) actions.replaceChildren(btn("stay", "Keep my seat"));
   else if (seated) actions.replaceChildren(btn("change", "Change seat"), btn("leave", "Leave"));
   else actions.replaceChildren(btn("leave", "Change name"));
+
+  // Seated and waiting in the lobby: the way into ride.js sits in the free space under the pads.
+  const music = document.createElement("button");
+  music.type = "button";
+  music.className = "btn btn-primary";
+  music.dataset.act = "music";
+  music.textContent = "Pick the music";
+  screen.querySelector(".more").replaceChildren(...(seated && state?.status === "lobby" ? [music] : []));
 }
 
 let lastClaimAt = 0;
 screen.addEventListener("click", (e) => {
+  if (ride) return; // the flow handles its own taps
   const pad = e.target.closest(".pad");
   if (pad && !pad.disabled) {
     const n = Number(pad.dataset.seat);
@@ -237,7 +250,10 @@ screen.addEventListener("click", (e) => {
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "change") { choosing = true; choosingFrom = me()?.spotId ?? null; }
   else if (act === "stay") choosing = false;
-  else if (act === "leave") {
+  else if (act === "music") {
+    ride = openRide({ screen, send, onClose: () => { ride = null; view = null; render(); } });
+    return;
+  } else if (act === "leave") {
     send({ type: "leave" });
     wantsIn = false;
     choosing = false;
