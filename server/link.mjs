@@ -9,7 +9,7 @@ import { WebSocketServer } from "ws";
 function lanUrls(port) {
   return Object.values(os.networkInterfaces())
     .flat()
-    .filter((a) => a && a.family === "IPv4" && !a.internal)
+    .filter((a) => a && a.family === "IPv4" && !a.internal && !a.address.startsWith("169.254.")) // 169.254 is a network card with no network: no phone can open it
     .map((a) => `http://${a.address}:${port}/`);
 }
 
