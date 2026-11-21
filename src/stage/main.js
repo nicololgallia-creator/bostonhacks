@@ -1,6 +1,7 @@
 // The projected game. Phones join, pick seats and start songs over the link; this page is the one
 // source of truth (session.js), draws the floor and plays the sound.
-// Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate).
+// Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate),
+// T turns the picture half way round (the projector and camera face the players; saved, also ?facing=1 or ?facing=0).
 // URL options: ?feet=mouse (the default; the whole picture is the field) ?feet=camera (feet from the camera, after setup) or ?feet=seats (seated play: tap in place, one slice of the picture for each seat),
 // ?demo=1 (a guest in every seat, Space starts the songs), ?autostart=1 (with demo, starts at once).
 import { create as createQr } from "qrcode";
@@ -12,11 +13,12 @@ import { createSynth } from "../game/synth.js";
 import { createRenderer } from "../game/render.js";
 import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
-import { openLink } from "../link.js";
+import { openLink, joinHref, stageRoom } from "../link.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
 import { listStops } from "../mbta/api.js";
 import { feetBySpot, makeLayout } from "./layout.js";
 import { applyKeystone } from "./keystone.js";
+import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
 
 const LAYOUT_KEY = "pp:layout";
@@ -28,6 +30,7 @@ const params = new URLSearchParams(location.search);
 const demo = params.get("demo") === "1";
 const canvas = document.createElement("canvas");
 document.getElementById("app").append(canvas);
+if (params.has("facing")) setFacing(params.get("facing") === "1"); // the gear stands across from the players, facing them
 applyKeystone(canvas); // the saved corners from setup straighten the picture on the floor
 
 // The one place that picks where feet come from.
@@ -70,7 +73,11 @@ const before = saved(PLAYERS_KEY);
 session.restore(before?.players, clock(), before?.live === true);
 
 // The link: every message from a phone goes to the session, and the phones get the State back.
-const link = openLink((message) => apply(message));
+const link = openLink((message) => apply(message), () => {}, (up) => {
+  relayUp = up; // the QR code's address depends on it
+  if (lanUrl || usePublic()) drawQr();
+  else { qr = null; delete canvas.dataset.joinUrl; }
+});
 const LIVE = ["countdown", "playing", "paused"];
 function sendState() {
   const state = session.snapshot(clock());
@@ -93,9 +100,14 @@ setInterval(sendState, 500);
 
 // The QR code points at the laptop's address on the network and carries the train, so the phone knows where it is
 // the moment it opens. The stage itself runs on localhost, which a phone cannot open, so the server lists the addresses.
+// With a public site address set (VITE_PUBLIC_URL) and the relay connected, the QR code leads to the hosted phone page.
+// Otherwise it holds the laptop's address, which works on the same Wi-Fi with no internet.
+const PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL || "";
 let lanUrl = null;
+let relayUp = false;
+const usePublic = () => PUBLIC_URL !== "" && relayUp;
 function drawQr() {
-  const href = lanUrl + trainQuery(snap.train);
+  const href = joinHref(usePublic() ? PUBLIC_URL : lanUrl, stageRoom(), trainQuery(snap.train));
   qr = createQr(href, { errorCorrectionLevel: "M" }).modules;
   canvas.dataset.joinUrl = href; // for checks: the address the QR code holds
 }
@@ -103,7 +115,7 @@ async function findAddress() {
   try {
     const { urls } = await (await fetch("/lan")).json();
     lanUrl = urls[0] ?? null;
-    if (lanUrl) return drawQr();
+    if (lanUrl || usePublic()) return drawQr();
     qr = null;
     qrNote = ["No Wi-Fi found.", "Join Wi-Fi or a hotspot."];
   } catch {
@@ -216,6 +228,13 @@ window.addEventListener("keydown", (e) => {
     else document.documentElement.requestFullscreen();
   } else if (e.code === "KeyP") apply({ type: snap.status === "paused" ? "resume" : "pause" }, true);
   else if (e.code === "KeyS") apply({ type: "skip" }, true);
+  else if (e.code === "KeyT") {
+    // The seats mirror with the picture, and the tracker reads that once at its start: so start again.
+    setFacing(!isFacing());
+    const url = new URL(location.href);
+    url.searchParams.delete("facing"); // or the address would undo the key on reload
+    location.replace(url);
+  }
   else if (e.code === "Escape") apply({ type: "stop" }, true);
   else if (e.code === "KeyC") setup();
   else if (e.code === "Space" && demo) { e.preventDefault(); startDemo(); }
