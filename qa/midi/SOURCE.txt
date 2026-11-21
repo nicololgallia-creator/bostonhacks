@@ -2,3 +2,28 @@ greensleeves.mid
 Source: Mutopia Project, "Greensleeves" (Traditional), piece 1265, https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=1265
 File: https://www.mutopiaproject.org/ftp/Traditional/GreensleevesAcc/GreensleevesAcc.mid
 Licence: Public Domain (as listed on the Mutopia page, checked 2026-11-21).
+
+sweet-caroline.mid
+Source: BitMidi, "Neil Diamond - Sweet Caroline.mid", https://bitmidi.com/neil-diamond-sweet-caroline-mid
+File: https://bitmidi.com/uploads/79665.mid
+Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
+
+shipping-up-to-boston.mid
+Source: MIDIfind.com, "Dropkick Murphys — I'm Shipping Up to Boston", https://midifind.com/files/d/dropkick_murphys/dropkick_murphys_i_m_shipping_up_to_boston/889-1-0-25448
+File: https://midifind.com/files/0-0-1-25448-20
+Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
+
+dirty-water.mid
+Source: BitMidi, "Dirty-Water.mid", https://bitmidi.com/dirty-water-mid
+File: https://bitmidi.com/uploads/39707.mid
+Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
+
+more-than-a-feeling.mid
+Source: BitMidi, "More-Than-A-Feeling-1.mid", https://bitmidi.com/more-than-a-feeling-1-mid
+File: https://bitmidi.com/uploads/75502.mid
+Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
+
+seven-nation-army.mid
+Source: BitMidi, "Seven_Nation_Army.mid", https://bitmidi.com/seven_nation_army-mid
+File: https://bitmidi.com/uploads/78491.mid
+Licence: not stated on the page; a user-made transcription of a copyrighted song (downloaded 2026-11-21).
