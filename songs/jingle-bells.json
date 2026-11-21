@@ -1,0 +1,21 @@
+{
+  "id": "jingle-bells",
+  "title": "Jingle Bells (chorus)",
+  "by": "James Lord Pierpont, 1857",
+  "bpm": 130,
+  "notes": [
+    {"beat": 0, "midi": 64, "beats": 2}, {"beat": 2, "midi": 64, "beats": 2}, {"beat": 4, "midi": 64, "beats": 4}, {"beat": 8, "midi": 64, "beats": 2},
+    {"beat": 10, "midi": 64, "beats": 2}, {"beat": 12, "midi": 64, "beats": 4}, {"beat": 16, "midi": 64, "beats": 2}, {"beat": 18, "midi": 67, "beats": 2},
+    {"beat": 20, "midi": 60, "beats": 3}, {"beat": 23, "midi": 62, "beats": 1}, {"beat": 24, "midi": 64, "beats": 8}, {"beat": 32, "midi": 65, "beats": 2},
+    {"beat": 34, "midi": 65, "beats": 2}, {"beat": 36, "midi": 65, "beats": 3}, {"beat": 39, "midi": 65, "beats": 1}, {"beat": 40, "midi": 65, "beats": 2},
+    {"beat": 42, "midi": 64, "beats": 2}, {"beat": 44, "midi": 64, "beats": 2}, {"beat": 46, "midi": 64, "beats": 1}, {"beat": 47, "midi": 64, "beats": 1},
+    {"beat": 48, "midi": 64, "beats": 2}, {"beat": 50, "midi": 62, "beats": 2}, {"beat": 52, "midi": 62, "beats": 2}, {"beat": 54, "midi": 64, "beats": 2},
+    {"beat": 56, "midi": 62, "beats": 4}, {"beat": 60, "midi": 67, "beats": 4}, {"beat": 64, "midi": 64, "beats": 2}, {"beat": 66, "midi": 64, "beats": 2},
+    {"beat": 68, "midi": 64, "beats": 4}, {"beat": 72, "midi": 64, "beats": 2}, {"beat": 74, "midi": 64, "beats": 2}, {"beat": 76, "midi": 64, "beats": 4},
+    {"beat": 80, "midi": 64, "beats": 2}, {"beat": 82, "midi": 67, "beats": 2}, {"beat": 84, "midi": 60, "beats": 3}, {"beat": 87, "midi": 62, "beats": 1},
+    {"beat": 88, "midi": 64, "beats": 8}, {"beat": 96, "midi": 65, "beats": 2}, {"beat": 98, "midi": 65, "beats": 2}, {"beat": 100, "midi": 65, "beats": 3},
+    {"beat": 103, "midi": 65, "beats": 1}, {"beat": 104, "midi": 65, "beats": 2}, {"beat": 106, "midi": 64, "beats": 2}, {"beat": 108, "midi": 64, "beats": 2},
+    {"beat": 110, "midi": 64, "beats": 1}, {"beat": 111, "midi": 64, "beats": 1}, {"beat": 112, "midi": 67, "beats": 2}, {"beat": 114, "midi": 67, "beats": 2},
+    {"beat": 116, "midi": 65, "beats": 2}, {"beat": 118, "midi": 62, "beats": 2}, {"beat": 120, "midi": 60, "beats": 8}
+  ]
+}

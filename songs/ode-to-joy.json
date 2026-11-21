@@ -1,0 +1,24 @@
+{
+  "id": "ode-to-joy",
+  "title": "Ode to Joy",
+  "by": "Ludwig van Beethoven, 1824",
+  "bpm": 130,
+  "notes": [
+    {"beat": 0, "midi": 64, "beats": 2}, {"beat": 2, "midi": 64, "beats": 2}, {"beat": 4, "midi": 65, "beats": 2}, {"beat": 6, "midi": 67, "beats": 2},
+    {"beat": 8, "midi": 67, "beats": 2}, {"beat": 10, "midi": 65, "beats": 2}, {"beat": 12, "midi": 64, "beats": 2}, {"beat": 14, "midi": 62, "beats": 2},
+    {"beat": 16, "midi": 60, "beats": 2}, {"beat": 18, "midi": 60, "beats": 2}, {"beat": 20, "midi": 62, "beats": 2}, {"beat": 22, "midi": 64, "beats": 2},
+    {"beat": 24, "midi": 64, "beats": 3}, {"beat": 27, "midi": 62, "beats": 1}, {"beat": 28, "midi": 62, "beats": 4}, {"beat": 32, "midi": 64, "beats": 2},
+    {"beat": 34, "midi": 64, "beats": 2}, {"beat": 36, "midi": 65, "beats": 2}, {"beat": 38, "midi": 67, "beats": 2}, {"beat": 40, "midi": 67, "beats": 2},
+    {"beat": 42, "midi": 65, "beats": 2}, {"beat": 44, "midi": 64, "beats": 2}, {"beat": 46, "midi": 62, "beats": 2}, {"beat": 48, "midi": 60, "beats": 2},
+    {"beat": 50, "midi": 60, "beats": 2}, {"beat": 52, "midi": 62, "beats": 2}, {"beat": 54, "midi": 64, "beats": 2}, {"beat": 56, "midi": 62, "beats": 3},
+    {"beat": 59, "midi": 60, "beats": 1}, {"beat": 60, "midi": 60, "beats": 4}, {"beat": 64, "midi": 62, "beats": 2}, {"beat": 66, "midi": 62, "beats": 2},
+    {"beat": 68, "midi": 64, "beats": 2}, {"beat": 70, "midi": 60, "beats": 2}, {"beat": 72, "midi": 62, "beats": 2}, {"beat": 74, "midi": 64, "beats": 1},
+    {"beat": 75, "midi": 65, "beats": 1}, {"beat": 76, "midi": 64, "beats": 2}, {"beat": 78, "midi": 60, "beats": 2}, {"beat": 80, "midi": 62, "beats": 2},
+    {"beat": 82, "midi": 64, "beats": 1}, {"beat": 83, "midi": 65, "beats": 1}, {"beat": 84, "midi": 64, "beats": 2}, {"beat": 86, "midi": 62, "beats": 2},
+    {"beat": 88, "midi": 60, "beats": 2}, {"beat": 90, "midi": 62, "beats": 2}, {"beat": 92, "midi": 55, "beats": 4}, {"beat": 96, "midi": 64, "beats": 2},
+    {"beat": 98, "midi": 64, "beats": 2}, {"beat": 100, "midi": 65, "beats": 2}, {"beat": 102, "midi": 67, "beats": 2}, {"beat": 104, "midi": 67, "beats": 2},
+    {"beat": 106, "midi": 65, "beats": 2}, {"beat": 108, "midi": 64, "beats": 2}, {"beat": 110, "midi": 62, "beats": 2}, {"beat": 112, "midi": 60, "beats": 2},
+    {"beat": 114, "midi": 60, "beats": 2}, {"beat": 116, "midi": 62, "beats": 2}, {"beat": 118, "midi": 64, "beats": 2}, {"beat": 120, "midi": 62, "beats": 3},
+    {"beat": 123, "midi": 60, "beats": 1}, {"beat": 124, "midi": 60, "beats": 4}
+  ]
+}

@@ -118,3 +118,6 @@ The times are in PLAN.md under Clock. At every checkpoint the lead runs the whol
 
 The lead adds one line per correction, newest first, with the time. Every agent obeys every line.
 
+- **Sat 12:12 PM, Nicolo:** "i feel like youre underestimating this whole software... this is a REAL LARGE application." Each player picks a seat on their phone, that seat is tracked, and the projector draws their pad exactly at their feet. Read `docs/HOW-IT-WORKS.md` before any card. Build every card as one part of a large system: follow the shapes in PLAN.md to the letter so the parts fit, and where "Seats and session" disagrees with an older section, "Seats and session" wins.
+- **Sat 12:04 PM, Nicolo:** "we need this application to be stellar." The game is played on the ground with feet and must feel like a real rhythm game: you tap the square when the tile arrives (standing on it does not count), some tiles are held down, hits build combos, the songs are real songs, and every hit gives feedback you can see and hear. The phone is only the remote that commands the floor. Build each card to that bar. "It works" is not the bar.
+

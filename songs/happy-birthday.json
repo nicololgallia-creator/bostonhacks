@@ -1,0 +1,15 @@
+{
+  "id": "happy-birthday",
+  "title": "Happy Birthday to You",
+  "by": "Mildred J. Hill and Patty Smith Hill, 1893 (as Good Morning to All)",
+  "bpm": 130,
+  "notes": [
+    {"beat": 0, "midi": 67, "beats": 1}, {"beat": 1, "midi": 67, "beats": 1}, {"beat": 2, "midi": 69, "beats": 2}, {"beat": 4, "midi": 67, "beats": 2},
+    {"beat": 6, "midi": 72, "beats": 2}, {"beat": 8, "midi": 71, "beats": 4}, {"beat": 12, "midi": 67, "beats": 1}, {"beat": 13, "midi": 67, "beats": 1},
+    {"beat": 14, "midi": 69, "beats": 2}, {"beat": 16, "midi": 67, "beats": 2}, {"beat": 18, "midi": 74, "beats": 2}, {"beat": 20, "midi": 72, "beats": 4},
+    {"beat": 24, "midi": 67, "beats": 1}, {"beat": 25, "midi": 67, "beats": 1}, {"beat": 26, "midi": 79, "beats": 2}, {"beat": 28, "midi": 76, "beats": 2},
+    {"beat": 30, "midi": 72, "beats": 2}, {"beat": 32, "midi": 71, "beats": 2}, {"beat": 34, "midi": 69, "beats": 2}, {"beat": 36, "midi": 77, "beats": 1},
+    {"beat": 37, "midi": 77, "beats": 1}, {"beat": 38, "midi": 76, "beats": 2}, {"beat": 40, "midi": 72, "beats": 2}, {"beat": 42, "midi": 74, "beats": 2},
+    {"beat": 44, "midi": 72, "beats": 4}
+  ]
+}

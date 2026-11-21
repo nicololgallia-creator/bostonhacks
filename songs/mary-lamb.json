@@ -1,0 +1,15 @@
+{
+  "id": "mary-lamb",
+  "title": "Mary Had a Little Lamb",
+  "by": "Traditional American melody, 1830",
+  "bpm": 90,
+  "notes": [
+    {"beat": 0, "midi": 64, "beats": 1}, {"beat": 1, "midi": 62, "beats": 1}, {"beat": 2, "midi": 60, "beats": 1}, {"beat": 3, "midi": 62, "beats": 1},
+    {"beat": 4, "midi": 64, "beats": 1}, {"beat": 5, "midi": 64, "beats": 1}, {"beat": 6, "midi": 64, "beats": 2}, {"beat": 8, "midi": 62, "beats": 1},
+    {"beat": 9, "midi": 62, "beats": 1}, {"beat": 10, "midi": 62, "beats": 2}, {"beat": 12, "midi": 64, "beats": 1}, {"beat": 13, "midi": 67, "beats": 1},
+    {"beat": 14, "midi": 67, "beats": 2}, {"beat": 16, "midi": 64, "beats": 1}, {"beat": 17, "midi": 62, "beats": 1}, {"beat": 18, "midi": 60, "beats": 1},
+    {"beat": 19, "midi": 62, "beats": 1}, {"beat": 20, "midi": 64, "beats": 1}, {"beat": 21, "midi": 64, "beats": 1}, {"beat": 22, "midi": 64, "beats": 1},
+    {"beat": 23, "midi": 64, "beats": 1}, {"beat": 24, "midi": 62, "beats": 1}, {"beat": 25, "midi": 62, "beats": 1}, {"beat": 26, "midi": 64, "beats": 1},
+    {"beat": 27, "midi": 62, "beats": 1}, {"beat": 28, "midi": 60, "beats": 4}
+  ]
+}

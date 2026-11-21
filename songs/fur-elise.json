@@ -1,0 +1,26 @@
+{
+  "id": "fur-elise",
+  "title": "Für Elise (opening)",
+  "by": "Ludwig van Beethoven, about 1810",
+  "bpm": 140,
+  "notes": [
+    {"beat": 0, "midi": 76, "beats": 1}, {"beat": 1, "midi": 75, "beats": 1}, {"beat": 2, "midi": 76, "beats": 1}, {"beat": 3, "midi": 75, "beats": 1},
+    {"beat": 4, "midi": 76, "beats": 1}, {"beat": 5, "midi": 71, "beats": 1}, {"beat": 6, "midi": 74, "beats": 1}, {"beat": 7, "midi": 72, "beats": 1},
+    {"beat": 8, "midi": 69, "beats": 2}, {"beat": 11, "midi": 60, "beats": 1}, {"beat": 12, "midi": 64, "beats": 1}, {"beat": 13, "midi": 69, "beats": 1},
+    {"beat": 14, "midi": 71, "beats": 2}, {"beat": 17, "midi": 64, "beats": 1}, {"beat": 18, "midi": 68, "beats": 1}, {"beat": 19, "midi": 71, "beats": 1},
+    {"beat": 20, "midi": 72, "beats": 2}, {"beat": 23, "midi": 64, "beats": 1}, {"beat": 24, "midi": 76, "beats": 1}, {"beat": 25, "midi": 75, "beats": 1},
+    {"beat": 26, "midi": 76, "beats": 1}, {"beat": 27, "midi": 75, "beats": 1}, {"beat": 28, "midi": 76, "beats": 1}, {"beat": 29, "midi": 71, "beats": 1},
+    {"beat": 30, "midi": 74, "beats": 1}, {"beat": 31, "midi": 72, "beats": 1}, {"beat": 32, "midi": 69, "beats": 2}, {"beat": 35, "midi": 60, "beats": 1},
+    {"beat": 36, "midi": 64, "beats": 1}, {"beat": 37, "midi": 69, "beats": 1}, {"beat": 38, "midi": 71, "beats": 2}, {"beat": 41, "midi": 64, "beats": 1},
+    {"beat": 42, "midi": 72, "beats": 1}, {"beat": 43, "midi": 71, "beats": 1}, {"beat": 44, "midi": 69, "beats": 2}, {"beat": 48, "midi": 76, "beats": 1},
+    {"beat": 49, "midi": 75, "beats": 1}, {"beat": 50, "midi": 76, "beats": 1}, {"beat": 51, "midi": 75, "beats": 1}, {"beat": 52, "midi": 76, "beats": 1},
+    {"beat": 53, "midi": 71, "beats": 1}, {"beat": 54, "midi": 74, "beats": 1}, {"beat": 55, "midi": 72, "beats": 1}, {"beat": 56, "midi": 69, "beats": 2},
+    {"beat": 59, "midi": 60, "beats": 1}, {"beat": 60, "midi": 64, "beats": 1}, {"beat": 61, "midi": 69, "beats": 1}, {"beat": 62, "midi": 71, "beats": 2},
+    {"beat": 65, "midi": 64, "beats": 1}, {"beat": 66, "midi": 68, "beats": 1}, {"beat": 67, "midi": 71, "beats": 1}, {"beat": 68, "midi": 72, "beats": 2},
+    {"beat": 71, "midi": 64, "beats": 1}, {"beat": 72, "midi": 76, "beats": 1}, {"beat": 73, "midi": 75, "beats": 1}, {"beat": 74, "midi": 76, "beats": 1},
+    {"beat": 75, "midi": 75, "beats": 1}, {"beat": 76, "midi": 76, "beats": 1}, {"beat": 77, "midi": 71, "beats": 1}, {"beat": 78, "midi": 74, "beats": 1},
+    {"beat": 79, "midi": 72, "beats": 1}, {"beat": 80, "midi": 69, "beats": 2}, {"beat": 83, "midi": 60, "beats": 1}, {"beat": 84, "midi": 64, "beats": 1},
+    {"beat": 85, "midi": 69, "beats": 1}, {"beat": 86, "midi": 71, "beats": 2}, {"beat": 89, "midi": 64, "beats": 1}, {"beat": 90, "midi": 72, "beats": 1},
+    {"beat": 91, "midi": 71, "beats": 1}, {"beat": 92, "midi": 69, "beats": 6}
+  ]
+}
