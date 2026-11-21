@@ -11,13 +11,14 @@ import { createSynth } from "../game/synth.js";
 import { createRenderer } from "../game/render.js";
 import { songs } from "../songs/index.js";
 import { openLink } from "../link.js";
-import { createSession } from "./session.js";
+import { createSession, trainFromAddress, trainQuery } from "./session.js";
+import { listStops } from "../mbta/api.js";
 import { feetBySpot } from "./layout.js";
 import { applyKeystone } from "./keystone.js";
 import { openSetup } from "./setup.js";
 
 const LAYOUT_KEY = "pp:layout";
-const SECTION_KEY = "pp:section"; // where this floor is, "Car 2, front"
+const TRAIN_KEY = "pp:train"; // the train this floor is in: line, direction, stop, car
 const PLAYERS_KEY = "pp:players"; // who is seated where, so a reloaded stage keeps everyone
 const DEMO_SONGS = ["twinkle", "greensleeves"];
 
@@ -39,7 +40,8 @@ function saved(key) {
   try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } // the session checks what it is given
 }
 
-const session = createSession({ songs, layout: saved(LAYOUT_KEY), section: localStorage.getItem(SECTION_KEY) });
+// The train comes from the address (the poster's QR code leads here), else from the last one saved, else the default.
+const session = createSession({ songs, layout: saved(LAYOUT_KEY), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
 const synth = createSynth();
 const draw = createRenderer(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
@@ -62,7 +64,7 @@ const LIVE = ["countdown", "playing", "paused"];
 function sendState() {
   const state = session.snapshot(clock());
   link.send(state);
-  localStorage.setItem(SECTION_KEY, state.section.name);
+  localStorage.setItem(TRAIN_KEY, JSON.stringify(state.train));
   localStorage.setItem(PLAYERS_KEY, JSON.stringify({ players: state.players.map(({ clientId, spotId }) => ({ clientId, spotId })), live: LIVE.includes(state.status) }));
 }
 
@@ -78,18 +80,36 @@ function apply(message, local = false) {
 }
 setInterval(sendState, 500);
 
-// The QR code points at the laptop's address on the network. The stage itself runs on localhost,
-// which a phone cannot open, so the server lists the addresses.
+// The QR code points at the laptop's address on the network and carries the train, so the phone knows where it is
+// the moment it opens. The stage itself runs on localhost, which a phone cannot open, so the server lists the addresses.
+let lanUrl = null;
+function drawQr() {
+  const href = lanUrl + trainQuery(snap.train);
+  qr = createQr(href, { errorCorrectionLevel: "M" }).modules;
+  canvas.dataset.joinUrl = href; // for checks: the address the QR code holds
+}
 async function findAddress() {
   try {
     const { urls } = await (await fetch("/lan")).json();
-    if (urls.length) { qr = createQr(urls[0], { errorCorrectionLevel: "M" }).modules; return; }
+    lanUrl = urls[0] ?? null;
+    if (lanUrl) return drawQr();
     qr = null;
     qrNote = ["No Wi-Fi found.", "Join Wi-Fi or a hotspot."];
   } catch {
-    qr = null;
+    lanUrl = qr = null;
     qrNote = ["The game server", "is not answering."];
   }
+}
+// The address holds the stop's id only (and so does the QR code); the MBTA has its name.
+function nameStop() {
+  const { atStopId, atStopName } = snap.train;
+  if (atStopName !== atStopId) return;
+  listStops()
+    .then((all) => {
+      const stop = all.find((s) => s.id === atStopId);
+      if (stop && session.setTrain({ ...snap.train, atStopName: stop.name })) publish();
+    })
+    .catch((err) => console.warn("Could not find the stop's name:", err.message));
 }
 
 function stopSound() {
@@ -122,13 +142,12 @@ function setup() {
     stage: { feet: feetSource },
     layout: snap.layout,
     offsetMs: snap.settings.offsetMs,
-    section: snap.section.name,
+    section: snap.train.atStopName, // setup's "Where is this?" field has no job now; delete these two lines when setup drops it
+    setSection: () => true,
     // The pads the setup page dragged. False while a song is playing.
     setLayout: (layout) => { const ok = session.setLayout(layout); publish(); return ok; },
     isPlaying: () => LIVE.includes(snap.status), // so setup can drop a "song is playing" refusal when the song ends
     setOffset: (ms) => apply({ type: "set", offsetMs: ms }, true),
-    // Where this floor is. False when the name is empty or too long.
-    setSection: (name) => { const ok = session.setSection(name); publish(); return ok; },
     onClose: () => { setupHandle = null; applyKeystone(canvas); tellReady(); },
   }) ?? setupHandle; // already open: keep the handle we have
 }
@@ -201,6 +220,7 @@ if (feetSource instanceof Error) {
       if (params.get("autostart") === "1") startDemo();
     }
     findAddress();
+    nameStop();
     frame();
   }).catch((err) => {
     document.getElementById("app").innerHTML = `<p class="error">Could not start the game: ${err.message}</p>`;

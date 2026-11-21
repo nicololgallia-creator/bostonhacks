@@ -17,6 +17,11 @@ export function createCameraFeet({ video, model = "lite", maxPeople = 4 }) {
     baseOptions: { modelAssetPath: modelUrl, delegate },
     runningMode: "VIDEO",
     numPoses: maxPeople,
+    // The defaults (0.5) found one person and missed the second, third and fourth on the real
+    // camera (Nicolo, Sat 21 Nov). Lower bars let it keep people who sit close or are half hidden.
+    minPoseDetectionConfidence: 0.3,
+    minPosePresenceConfidence: 0.3,
+    minTrackingConfidence: 0.3,
   });
 
   // Resolves to "GPU" or "CPU", the one that works on this computer.

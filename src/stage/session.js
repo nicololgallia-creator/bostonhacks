@@ -7,7 +7,6 @@ import { makeLayout, asLayout, MAX_SEATS } from "./layout.js";
 
 export const COUNTDOWN_MS = 3000;
 export const RESULTS_MS = 8000;
-const SECTION_MAX = 30;
 const NOTICE_MS = 4000; // a refusal is shown this long
 const HERE_MS = 10000; // a player not heard from for this long is removed
 const LIVE = ["countdown", "playing", "paused"];
@@ -17,8 +16,45 @@ const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "
 const isId = (x) => typeof x === "string" && x.length > 0 && x.length <= 64;
 const isNum = (x) => typeof x === "number" && Number.isFinite(x);
 const zeroStats = (total = 0) => ({ score: 0, combo: 0, maxCombo: 0, multiplier: 1, counts: { perfect: 0, good: 0, miss: 0 }, total, grade: null });
+// Paid out to the seat (or every seat tied) with the most of something once a song ends. A seat with none gets nothing.
+const BONUSES = [
+  { label: "Best combo", points: 50, value: (s) => s.maxCombo },
+  { label: "Most perfects", points: 25, value: (s) => s.counts.perfect },
+];
+
+// The train this floor is in, from the poster's QR code. The headsign for each line and direction is the MBTA's
+// own (direction_destinations, read from the live API on 2026-11-21).
+const HEADSIGNS = {
+  Red: ["Ashmont/Braintree", "Alewife"], Mattapan: ["Mattapan", "Ashmont"], Orange: ["Forest Hills", "Oak Grove"],
+  Blue: ["Bowdoin", "Wonderland"], "Green-B": ["Boston College", "Government Center"], "Green-C": ["Cleveland Circle", "Government Center"],
+  "Green-D": ["Riverside", "Union Square"], "Green-E": ["Heath Street", "Medford/Tufts"],
+};
+const MAX_CAR = 12;
+export const DEFAULT_TRAIN = { line: "Green-B", directionId: 1, headsign: "Government Center", atStopId: "place-bucen", atStopName: "Boston University Central", car: 2 };
+
+// The clean copy of a train, or null when any part is missing or wrong.
+function cleanTrain(t) {
+  const ok = t && typeof t === "object" && Object.hasOwn(HEADSIGNS, t.line) && (t.directionId === 0 || t.directionId === 1)
+    && isId(t.headsign) && isId(t.atStopId) && isId(t.atStopName) && Number.isInteger(t.car) && t.car >= 1 && t.car <= MAX_CAR;
+  return ok ? { line: t.line, directionId: t.directionId, headsign: t.headsign, atStopId: t.atStopId, atStopName: t.atStopName, car: t.car } : null;
+}
+
+// The train named in an address: ?line=Green-B&dir=1&at=place-bucen&car=2. Null when the address names none of
+// the four. A part that is missing or wrong falls back to the default's. The stop's name is not in the address, so
+// it is the stop's id until something looks it up and calls setTrain.
+export function trainFromAddress(search) {
+  const q = new URLSearchParams(search);
+  if (!["line", "dir", "at", "car"].some((k) => q.has(k))) return null;
+  const line = Object.hasOwn(HEADSIGNS, q.get("line")) ? q.get("line") : DEFAULT_TRAIN.line;
+  const directionId = q.get("dir") === "0" ? 0 : q.get("dir") === "1" ? 1 : DEFAULT_TRAIN.directionId;
+  const atStopId = isId(q.get("at")) ? q.get("at") : DEFAULT_TRAIN.atStopId;
+  const car = /^\d{1,2}$/.test(q.get("car")) && +q.get("car") >= 1 && +q.get("car") <= MAX_CAR ? +q.get("car") : DEFAULT_TRAIN.car;
+  return { line, directionId, headsign: HEADSIGNS[line][directionId], atStopId, atStopName: atStopId === DEFAULT_TRAIN.atStopId ? DEFAULT_TRAIN.atStopName : atStopId, car };
+}
+
+// The part of a phone's address that carries the train: "?line=Green-B&dir=1&at=place-bucen&car=2".
+export const trainQuery = (t) => `?${new URLSearchParams({ line: t.line, dir: t.directionId, at: t.atStopId, car: t.car })}`;
 const statsOf = (r) => ({ score: r.score, combo: r.combo, maxCombo: r.maxCombo, multiplier: r.multiplier, counts: r.counts, total: r.total, grade: r.grade });
-const cleanSection = (x) => (typeof x === "string" && x.trim() && x.trim().length <= SECTION_MAX ? x.trim() : null);
 const summary = (s) => ({ id: s.id, title: s.title, seconds: Math.round(songSeconds(s)) });
 
 // A transit is null or { stop, mode, endsAt }. Returns the clean copy, or undefined when it is malformed.
@@ -29,9 +65,9 @@ function cleanTransit(t) {
   return ok ? { stop: t.stop, mode: t.mode, endsAt } : undefined;
 }
 
-export function createSession({ songs, layout, section } = {}) {
+export function createSession({ songs, layout, train } = {}) {
   const library = Array.isArray(songs) ? songs : [];
-  let place = cleanSection(section) ?? "Car 2, front";
+  let where = cleanTrain(train) ?? { ...DEFAULT_TRAIN };
   let lay = asLayout(layout) ?? makeLayout({ seats: 3 });
   let status = "lobby";
   let notice = null; // { for, text }
@@ -41,7 +77,7 @@ export function createSession({ songs, layout, section } = {}) {
   let current = null; // the song loaded now
   let queue = []; // songs still to come
   let transit = null;
-  let engines = new Map(); // spotId -> { game, tiles, stats, done }
+  let engines = new Map(); // spotId -> { game, tiles, stats, done, bonus, bonusFor }
   // Song time is nowMs - origin: 0 is when the first beat is due at the hit line. A song starts
   // COUNTDOWN_MS + TRAVEL_MS before that, so the countdown runs first and then the tiles slide in.
   let origin = 0;
@@ -60,13 +96,25 @@ export function createSession({ songs, layout, section } = {}) {
   };
   const songTime = (nowMs) => (status === "paused" ? pausedAt : nowMs) - origin;
   const refuse = (text, forId, nowMs) => { notice = { for: forId, text }; noticeAt = nowMs; };
-  // The team's numbers: every seat's part added up. The grade comes once every part is finished.
+  // The team's numbers: every seat's part added up, bonuses included. The grade comes once every part is finished.
   function teamStats() {
     const all = [...engines.values()];
-    const sum = (f) => all.reduce((n, e) => n + f(e.stats), 0);
-    const hits = sum((s) => s.counts.perfect + s.counts.good);
-    const total = sum((s) => s.total);
-    return { score: sum((s) => s.score), hits, total, grade: all.length && all.every((e) => e.done) ? gradeFor(hits, total) : null };
+    const sum = (f) => all.reduce((n, e) => n + f(e), 0);
+    const hits = sum((e) => e.stats.counts.perfect + e.stats.counts.good);
+    const total = sum((e) => e.stats.total);
+    return { score: sum((e) => e.stats.score + e.bonus), hits, total, grade: all.length && all.every((e) => e.done) ? gradeFor(hits, total) : null };
+  }
+  // The song is over: the best of each kind among the seats still playing gets its bonus.
+  function awardBonuses() {
+    const seats = [...engines.values()];
+    for (const { label, points, value } of BONUSES) {
+      const top = Math.max(...seats.map((e) => value(e.stats)));
+      if (top <= 0) continue;
+      for (const e of seats.filter((e) => value(e.stats) === top)) {
+        e.bonus += points;
+        e.bonusFor = e.bonusFor ? `${e.bonusFor}, ${label}` : label;
+      }
+    }
   }
   // A seat the layout no longer has is given up.
   function useLayout(next) {
@@ -100,7 +148,7 @@ export function createSession({ songs, layout, section } = {}) {
     const parts = splitParts(song, seated.length);
     engines = new Map(seated.map((spotId, i) => {
       const game = createGame({ song: parts[i], lanes: lay.lanes });
-      return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false }];
+      return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false, bonus: 0, bonusFor: null }];
     }));
     // The stage's clock runs offsetMs behind the wall clock. A new lag takes over here, and the origin
     // moves by the difference so the song clock does not jump.
@@ -232,6 +280,7 @@ export function createSession({ songs, layout, section } = {}) {
           for (const event of r.events) out.push({ ...event, spotId });
         }
         if ([...engines.values()].every((e) => e.done)) {
+          awardBonuses();
           resultsAt = nowMs + RESULTS_MS;
           setStatus("results");
         }
@@ -247,9 +296,13 @@ export function createSession({ songs, layout, section } = {}) {
         status,
         notice: notice && nowMs - noticeAt < NOTICE_MS ? notice : null,
         layout: lay,
-        section: { name: place },
+        train: where,
         // One entry for each taken seat, in seat order. A phone that holds several seats appears in each.
-        players: [...owner].sort((a, b) => a[0] - b[0]).map(([spotId, clientId]) => ({ clientId, spotId, ...(engines.get(spotId)?.stats ?? zeroStats()) })),
+        // The seat's total for the song is score + bonus.
+        players: [...owner].sort((a, b) => a[0] - b[0]).map(([spotId, clientId]) => {
+          const e = engines.get(spotId);
+          return { clientId, spotId, ...(e?.stats ?? zeroStats()), bonus: e?.bonus ?? 0, bonusFor: e?.bonusFor ?? null };
+        }),
         team: teamStats(),
         song: current && summary(current),
         queue: queue.map(summary),
@@ -274,10 +327,10 @@ export function createSession({ songs, layout, section } = {}) {
     },
     // The lag in use now. A new `set` mid-song takes over at the next song, so the stage's clock reads this.
     offsetMs: () => appliedOffset,
-    // Where this floor is ("Car 2, front"). False when the name is empty or longer than 30 characters.
-    setSection(name) {
-      const clean = cleanSection(name);
-      if (clean) place = clean;
+    // The train this floor is in: { line, directionId, headsign, atStopId, atStopName, car }. False when any part is wrong.
+    setTrain(next) {
+      const clean = cleanTrain(next);
+      if (clean) where = clean;
       return !!clean;
     },
     // Gives back the seats a reloaded stage had: [{ clientId, spotId }], one entry for each taken seat (saved by

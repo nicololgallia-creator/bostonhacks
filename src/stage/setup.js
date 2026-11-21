@@ -14,7 +14,7 @@
 // openSetup returns { close }, or nothing when setup is already open.
 // After it, the stage should call applyKeystone on its canvas again, because the corners may have changed.
 import "./setup.css";
-import { apply, solve } from "../track/homography.js";
+import { apply, invert, solve } from "../track/homography.js";
 import { mouseFeet } from "../track/mouse.js";
 import { createTrackedFeet } from "../track/tracked.js";
 import { applyKeystone, loadCalibration, matrix3dFor, saveCalibration } from "./keystone.js";
@@ -27,6 +27,7 @@ const CORNERS = ["top left", "top right", "bottom right", "bottom left"];
 const HANDLE = 56;
 const UNIT = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
 const MIN_PAD = 0.1; // a pad is at least a tenth of the field across and down
+const LOST_MS = 3000; // feet seen, none on the field for this long: the lineup is wrong
 const BEATS = 8;
 const BEAT_MS = 600;
 const LEAD_MS = 1500; // before the first click, so the rings show the rhythm
@@ -49,11 +50,31 @@ const clamp01 = (n) => Math.min(1, Math.max(0, n));
 
 let isOpen = false;
 
-// Glowing dots at feet, in field coordinates, on a canvas that covers the field.
-function drawFeet(g, list, color) {
+// Glowing dots at feet, in field coordinates, on a canvas that covers the field. A foot the camera puts outside the
+// field is a hollow ring on the nearest edge, in another colour, with an arrow pointing the way it is off.
+function drawFeet(g, list, color, offColor) {
   const { width: w, height: h } = g.canvas;
   g.clearRect(0, 0, w, h);
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
   for (const f of list) {
+    const off = f.u < 0 || f.u > 1 || f.v < 0 || f.v > 1;
+    if (off) {
+      const ring = h * 0.04, inset = ring * 2.2; // inset, so the whole ring and its arrow stay on the field
+      const x = clamp(f.u * w, inset, w - inset), y = clamp(f.v * h, inset, h - inset);
+      const way = Math.atan2((f.v - clamp(f.v, 0, 1)) * h, (f.u - clamp(f.u, 0, 1)) * w);
+      const at = (d, side) => [x + Math.cos(way) * d - Math.sin(way) * side, y + Math.sin(way) * d + Math.cos(way) * side];
+      g.lineWidth = h * 0.012;
+      g.strokeStyle = g.fillStyle = offColor;
+      g.beginPath();
+      g.arc(x, y, ring, 0, 7);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(...at(ring * 1.25, -ring * 0.55));
+      g.lineTo(...at(ring * 2.1, 0));
+      g.lineTo(...at(ring * 1.25, ring * 0.55));
+      g.fill();
+      continue;
+    }
     const x = f.u * w, y = f.v * h, r = h * 0.06;
     const grad = g.createRadialGradient(x, y, 0, x, y, r);
     grad.addColorStop(0, "#fff");
@@ -64,6 +85,47 @@ function drawFeet(g, list, color) {
     g.arc(x, y, r, 0, 7);
     g.fill();
   }
+}
+
+// The field's four corners as the camera sees them: sent back through the saved map. Null when there is no map
+// yet or it cannot be reversed. { map, outline: four camera points, 0 to 1 }.
+function cameraMap() {
+  const map = loadCalibration().cameraToField;
+  if (!map) return null;
+  try {
+    const back = invert(map);
+    const outline = UNIT.map((c) => apply(back, c));
+    return outline.every(Boolean) ? { map, outline } : null;
+  } catch { return null; }
+}
+
+// The field's outline on a camera picture: a closed four-sided shape, the players' edge (the bottom) thicker and named.
+function drawOutline(g, outline, bright, edge) {
+  const { width: w, height: h } = g.canvas;
+  const pts = outline.map((p) => [p.x * w, p.y * h]);
+  const line = (from, to, color, width) => {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.beginPath();
+    g.moveTo(...pts[from]);
+    g.lineTo(...pts[to]);
+    g.stroke();
+  };
+  g.lineJoin = g.lineCap = "round";
+  for (const [color, width] of [["#000", 8], [bright, 4]]) {
+    for (let i = 0; i < 3; i++) line(i, i + 1, color, width);
+    line(3, 0, color, width);
+  }
+  line(2, 3, "#000", 10);
+  line(2, 3, edge, 6);
+  g.font = `600 ${Math.max(11, Math.round(w * 0.016))}px sans-serif`;
+  g.textAlign = "center";
+  g.fillStyle = edge;
+  g.strokeStyle = "#000";
+  g.lineWidth = 3;
+  const mx = (pts[2][0] + pts[3][0]) / 2, my = (pts[2][1] + pts[3][1]) / 2 - 10;
+  g.strokeText("players' edge", mx, my);
+  g.fillText("players' edge", mx, my);
 }
 
 export function openSetup({ stage, layout: startLayout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose }) {
@@ -81,6 +143,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   const layer = el("div");
   const count = el("p", "setup-count");
   const instruction = el("p", "setup-instruction");
+  const mini = el("div", "setup-mini"); // the small camera picture, in the foot check and the seats
   const controls = el("div", "setup-row");
   const meta = el("p", "setup-meta");
   const error = el("p", "setup-error");
@@ -88,11 +151,16 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   const back = button("Back", "", () => go(index - 1));
   const next = button("Next", "is-primary", () => (index === STEPS.length - 1 ? close() : go(index + 1)));
   const head = el("div", "setup-head");
-  head.append(count, button("Close setup", "is-quiet", close));
+  // The panel sits in a corner while the field needs seeing. Move sends it to the next corner.
+  const docks = ["tl", "tr", "br", "bl"];
+  root.dataset.corner = "tl";
+  const move = button("Move", "is-quiet", () => { root.dataset.corner = docks[(docks.indexOf(root.dataset.corner) + 1) % 4]; });
+  move.setAttribute("aria-label", "Move this panel to another corner");
+  head.append(count, move, button("Close setup", "is-quiet", close));
   const foot = el("div", "setup-foot");
   foot.append(back, next);
   const panel = el("div", "setup-panel");
-  panel.append(head, instruction, controls, meta, error, foot);
+  panel.append(head, instruction, mini, controls, meta, error, foot);
   root.append(layer, panel);
   document.body.append(root);
 
@@ -124,23 +192,60 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   addEventListener("keydown", onKey, true);
 
   // The camera picture, or a plain dark box when a recording stands in for the camera, with a canvas for the dots.
-  function picture() {
-    const box = el("div", "setup-pic");
+  // `mini` is the small one that sits in the panel.
+  function picture(mini) {
+    const box = el("div", mini ? "setup-pic is-mini" : "setup-pic");
     const canvas = el("canvas");
-    if (feet.video) box.append(feet.video);
+    // A second video shows the same camera stream. The tracker's own video must never be moved:
+    // taking it off the page pauses it, and the camera then hands out one stale frame.
+    let preview = null;
+    if (feet.video) {
+      preview = el("video");
+      preview.muted = true;
+      preview.playsInline = true;
+      preview.autoplay = true;
+      preview.srcObject = feet.video.srcObject;
+      box.append(preview);
+    }
     box.append(canvas);
     const ratio = () => (feet.video?.videoWidth ? feet.video.videoWidth / feet.video.videoHeight : 16 / 9);
     return {
       box,
-      dots(list) {
+      // list: camera feet [{ x, y, off }], 0 to 1. A foot with `off` is outside the field. outline: the field's four corners.
+      draw(list, outline) {
+        if (preview && preview.srcObject !== feet.video.srcObject) preview.srcObject = feet.video.srcObject; // the camera was changed
         box.style.setProperty("--ar", ratio());
-        const w = (canvas.width = box.clientWidth), h = (canvas.height = box.clientHeight);
+        const w = box.clientWidth, h = box.clientHeight;
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
         const g = canvas.getContext("2d");
-        g.fillStyle = css("--seat-3");
-        g.strokeStyle = "#000";
+        g.clearRect(0, 0, w, h);
+        if (outline) drawOutline(g, outline, css("--text"), css("--seat-1"));
+        const r = Math.max(6, w * 0.012);
         g.lineWidth = 3;
-        for (const f of list) { g.beginPath(); g.arc(f.x * w, f.y * h, 12, 0, 7); g.fill(); g.stroke(); }
+        for (const p of list) {
+          g.beginPath();
+          g.arc(p.x * w, p.y * h, r, 0, 7);
+          g.strokeStyle = "#000";
+          if (p.off) { g.lineWidth = 7; g.stroke(); g.lineWidth = 4; g.strokeStyle = css("--seat-2"); g.stroke(); } // a hollow ring
+          else { g.fillStyle = css("--seat-3"); g.fill(); g.lineWidth = 3; g.stroke(); }
+        }
       },
+    };
+  }
+
+  // The small camera picture for the foot check and the seats: a dot on every foot the camera finds, a pink ring
+  // on one the map puts off the field, and the field's outline on top. If the outline does not sit on the projected
+  // rectangle in the picture, the lineup is wrong.
+  function miniCamera() {
+    const pic = picture(true);
+    mini.replaceChildren(pic.box);
+    const where = cameraMap();
+    return () => {
+      const list = feet.raw().map((f) => {
+        const p = where && apply(where.map, f);
+        return { x: f.x, y: f.y, off: !!p && (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) };
+      });
+      pic.draw(list, where?.outline);
     };
   }
 
@@ -171,7 +276,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     const tick = () => {
       feet.read(); // pulls the next camera frame when the stage is not doing it
       const seen = feet.raw();
-      pic.dots(seen);
+      pic.draw(seen, null);
       const working = feet.ready().camera && feet.fps() > 0;
       ctx.meta(working ? `${feet.fps()} frames a second, ${seen.length} ${seen.length === 1 ? "foot" : "feet"} seen.` : failed ? "" : "Starting the camera...");
       ctx.next(working);
@@ -245,23 +350,30 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
 
   function fieldStep() {
     let clicks = [];
+    const ORDER = "1 top left, 2 top right, 3 bottom right, 4 bottom left";
 
     function showMarks() {
+      dock(false); // the panel stays top centre here, clear of the four marks
       clicks = [];
       layer.replaceChildren();
       controls.replaceChildren(button("Take a still", "is-primary", takeStill));
-      ctx.meta("");
+      ctx.meta(`Seen from the players' edge: ${ORDER}.`);
       ctx.error("");
       ctx.say("Four numbered marks should be on the floor. Check that the camera can see all four, then take a still.");
       ctx.next(!!loadCalibration().cameraToField);
       const field = el("div", "setup-field is-quiet");
-      MARKS.forEach((m, i) => field.append(mark(i, m)));
+      MARKS.forEach((m, i) => field.append(mark(i, m, CORNERS[i])));
       layer.append(field);
       applyKeystone(field);
     }
 
-    function mark(i, at) {
+    // A numbered mark. On the floor it also names its corner, in the words the clicking step uses.
+    function mark(i, at, corner) {
       const d = el("div", "setup-mark", String(i + 1));
+      if (corner) {
+        d.append(el("small", "", corner));
+        d.classList.toggle("is-bottom", i >= 2);
+      }
       d.style.left = `${at.x * 100}%`;
       d.style.top = `${at.y * 100}%`;
       d.style.background = `var(--seat-${i + 1})`;
@@ -276,37 +388,42 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       const g = still.getContext("2d");
       if (v?.videoWidth) g.drawImage(v, 0, 0);
       else { g.fillStyle = css("--surface-1"); g.fillRect(0, 0, still.width, still.height); }
+      const over = el("canvas"); // the field's outline goes here, above the still and below the numbered clicks
+      over.width = still.width;
+      over.height = still.height;
 
+      dock(true); // the still takes the room the panel leaves
       layer.replaceChildren();
       const box = el("div", "setup-pic is-clickable");
       box.style.setProperty("--ar", still.width / still.height);
-      box.append(still);
+      box.append(still, over);
       layer.append(box);
-      clicks = [];
-      ctx.say("Click mark 1, then 2, 3, and 4, in the order of the numbers.");
-      ctx.meta("0 of 4 marks clicked.");
-      ctx.error("");
-      controls.replaceChildren(
-        button("Redo", "", () => {
-          clicks = [];
-          box.querySelectorAll(".setup-mark").forEach((m) => m.remove());
-          ctx.meta("0 of 4 marks clicked.");
-          ctx.error("");
-        }),
-        button("Take another still", "", showMarks),
+      const ask = () => ctx.meta(
+        clicks.length === 4 ? "Four of 4 clicked." : `${clicks.length} of 4 clicked. Next is mark ${clicks.length + 1}, ${CORNERS[clicks.length]}. Order: ${ORDER}.`,
       );
+      const reset = () => {
+        clicks = [];
+        box.querySelectorAll(".setup-mark").forEach((m) => m.remove());
+        over.getContext("2d").clearRect(0, 0, over.width, over.height);
+        ctx.say("Click the four marks in the order of their numbers, as you see them on the floor from the players' edge.");
+        ctx.next(!!loadCalibration().cameraToField);
+        ctx.error("");
+        ask();
+      };
+      reset();
+      controls.replaceChildren(button("Redo", "", reset), button("Take another still", "", showMarks));
       box.addEventListener("click", (e) => {
         if (clicks.length >= 4) return;
         const r = box.getBoundingClientRect();
         const p = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
         box.append(mark(clicks.length, { x: p.x, y: p.y }));
         clicks.push(p);
-        ctx.meta(`${clicks.length} of 4 marks clicked.`);
-        if (clicks.length === 4) finish();
+        ask();
+        if (clicks.length === 4) finish(over);
       });
     }
 
-    async function finish() {
+    async function finish(over) {
       try {
         saveCalibration({ cameraToField: solve(clicks, MARKS) });
         await feet.reload();
@@ -314,7 +431,10 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
         ctx.error(e.message);
         return;
       }
-      ctx.say("Saved. The camera now knows where the field is. Press Next.");
+      // The field as the camera now sees it. A wrong click shows here at once, as a twisted or lopsided shape.
+      const where = cameraMap();
+      if (where) drawOutline(over.getContext("2d"), where.outline, css("--text"), css("--seat-1"));
+      ctx.say("Saved. Does the outline sit on the field in the picture? If it is twisted or off, press Redo. If it looks right, press Next.");
       ctx.next(true);
     }
 
@@ -322,27 +442,40 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   }
 
   function footStep() {
-    const field = el("div", "setup-field is-quiet");
+    // The grid stays on here: a plain black field with dots that had landed off it looked like
+    // a dead screen on the real projector (Nicolo, Sat 21 Nov).
+    const field = el("div", "setup-field is-grid");
     const canvas = el("canvas");
     canvas.width = innerWidth;
     canvas.height = innerHeight;
     field.append(canvas);
     layer.append(field);
     applyKeystone(field);
-    ctx.say("Walk around. Each dot should sit on a shoe. If it does not, go back a step.");
+    ctx.say("Walk around. Each foot should get a yellow dot on the picture here and on the floor.");
     ctx.next(true);
     const g = canvas.getContext("2d");
-    const glow = css("--seat-3");
+    const glow = css("--seat-3"), offColor = css("--seat-2");
     const src = source(field);
+    const drawCamera = camera ? miniCamera() : null;
+    const fix = button("Back to the four marks", "is-primary", () => go(STEPS.findIndex((st) => st.run === fieldStep)));
+    let lonely = null; // since when feet are seen and none is inside the field
     let frame = 0;
-    const tick = () => {
+    const tick = (now) => {
       const list = src.read();
-      drawFeet(g, list, glow);
-      ctx.meta(`${list.length} ${list.length === 1 ? "foot" : "feet"} on the field.`);
-      ctx.error(!camera || feet.ready().calibrated ? "" : "The camera is not lined up with the field yet. Go back to the step where you click the four marks.");
+      drawFeet(g, list, glow, offColor);
+      drawCamera?.();
+      const inside = list.filter((f) => f.u >= 0 && f.u <= 1 && f.v >= 0 && f.v <= 1).length;
+      lonely = list.length && !inside ? (lonely ?? now) : null;
+      const lost = camera && lonely !== null && now - lonely >= LOST_MS;
+      ctx.meta(`${list.length} ${list.length === 1 ? "foot" : "feet"} seen, ${inside} inside the field. Yellow dot: on the field. Pink ring and arrow: off the field.`);
+      ctx.error(!camera || feet.ready().calibrated
+        ? (lost ? "Feet are seen but none is on the field. Most likely the four marks were clicked in the wrong order, or the camera or projector moved. Go back to Show the camera the field and click them again." : "")
+        : "The camera is not lined up with the field yet. Go back to the step where you click the four marks.");
+      if (lost && !fix.isConnected) controls.append(fix);
+      if (!lost && fix.isConnected) fix.remove();
       frame = requestAnimationFrame(tick);
     };
-    tick();
+    requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }
 
@@ -483,13 +616,15 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     mark();
 
     const g = canvas.getContext("2d");
-    const glow = css("--seat-3");
+    const glow = css("--seat-3"), offColor = css("--seat-2");
     const src = source(field);
+    const drawCamera = camera ? miniCamera() : null;
     let frame = 0;
     const tick = () => {
       if (refused && !isPlaying?.()) { refused = false; ctx.error(""); } // the song has ended, so the refusal no longer holds
       const list = src.read();
-      drawFeet(g, list, glow);
+      drawFeet(g, list, glow, offColor);
+      drawCamera?.();
       const inside = Object.values(feetBySpot(layout, list)).flat().length;
       ctx.meta(`${list.length} ${list.length === 1 ? "foot" : "feet"} seen, ${inside} inside a pad.`);
       frame = requestAnimationFrame(tick);
@@ -597,18 +732,21 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
 
   const STEPS = [
     { name: "Camera", run: cameraStep, camera: true },
-    { name: "Straighten the picture", run: straightenStep },
+    { name: "Straighten the picture", run: straightenStep, centre: true }, // its corner handles sit at the window's corners
     { name: "Show the camera the field", run: fieldStep, camera: true },
     { name: "Place the seats", run: seatsStep },
     { name: "Foot check", run: footStep },
-    { name: "Lag test", run: lagStep, side: true }, // the panel steps aside: the square is in the middle
+    { name: "Lag test", run: lagStep },
   ].filter((step) => camera || !step.camera);
+
+  const dock = (on) => { root.classList.toggle("is-dock", on); move.hidden = !on; }; // Move only means something while docked
 
   function go(i) {
     cleanup?.();
     keyHandler = null;
     index = i;
-    root.classList.toggle("is-side", !!STEPS[i].side);
+    dock(!STEPS[i].centre); // out of the centre steps, the panel stays small in a corner
+    mini.replaceChildren();
     layer.replaceChildren();
     controls.replaceChildren();
     ctx.meta("");
@@ -625,7 +763,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     removeEventListener("keydown", onKey, true);
     root.remove();
     const ready = feet?.ready();
-    if (own) feet.stop();
+    if (own) { feet.stop(); feet.video?.remove(); } // setup made this camera, so setup takes its hidden video off the page too
     isOpen = false;
     onClose?.(ready);
   }

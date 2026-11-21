@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, COUNTDOWN_MS, RESULTS_MS } from "./session.js";
+import { createSession, trainFromAddress, trainQuery, DEFAULT_TRAIN, COUNTDOWN_MS, RESULTS_MS } from "./session.js";
 import { makeLayout } from "./layout.js";
 import { TRAVEL_MS, gradeFor } from "../game/engine.js";
 import { splitParts } from "../game/parts.js";
@@ -61,7 +61,7 @@ const seatsOf = (s, now = 0) => s.snapshot(now).players.map((p) => [p.clientId, 
 test("a new session is a lobby with the State message's exact shape", () => {
   const snap = createSession({ songs }).snapshot(0);
   assert.deepEqual(snap, {
-    type: "state", status: "lobby", notice: null, layout: makeLayout({ seats: 3 }), section: { name: "Car 2, front" },
+    type: "state", status: "lobby", notice: null, layout: makeLayout({ seats: 3 }), train: DEFAULT_TRAIN,
     players: [], team: { score: 0, hits: 0, total: 0, grade: null },
     song: null, queue: [], secondsLeft: 0, transit: null, ready: { camera: false, calibrated: false },
     settings: { volume: 0.8, offsetMs: 120 },
@@ -75,12 +75,11 @@ test("snapshots are copies: changing one changes nothing inside", () => {
   assert.equal(s.snapshot(0).layout.spots.length, 3);
 });
 
-test("a player in the State is a seat: clientId, spotId and stats, with no name and no waitMs", () => {
+test("a player in the State is a seat: clientId, spotId, stats and bonus, with no name and no waitMs", () => {
   const snap = twoSeated().snapshot(0);
-  assert.deepEqual(snap.players.map((p) => Object.keys(p).sort()), [
-    ["clientId", "combo", "counts", "grade", "maxCombo", "multiplier", "score", "spotId", "total"],
-    ["clientId", "combo", "counts", "grade", "maxCombo", "multiplier", "score", "spotId", "total"],
-  ]);
+  const keys = ["bonus", "bonusFor", "clientId", "combo", "counts", "grade", "maxCombo", "multiplier", "score", "spotId", "total"];
+  assert.deepEqual(snap.players.map((p) => Object.keys(p).sort()), [keys, keys]);
+  assert.deepEqual(snap.players.map((p) => [p.bonus, p.bonusFor]), [[0, null], [0, null]]);
 });
 
 test("join needs only a clientId, joining again changes nothing, and a phone with no seat is not in players", () => {
@@ -530,7 +529,7 @@ test("tick returns the song clock and the song: negative in the lead-in, frozen 
   assert.deepEqual([s.tick(START + 9200, {}).songMs, s.tick(START + 9200, {}).song], [null, null]);
 });
 
-// ---- Wave 3: parts, the section, the notice, the 10 second rule, restore, the joined-only rule, the lag ----
+// ---- Wave 3: parts, the notice, the 10 second rule, restore, the joined-only rule, the lag ----
 
 test("parts: two seats get different tiles from the same song, and each seat's total is its own part's", () => {
   const s = twoSeated();
@@ -586,7 +585,7 @@ test("team: two seats that play everything score S together", () => {
   run(s, 0, START + 1700, play(tiny, [1, 2]));
   const team = s.snapshot(START + 1700).team;
   assert.deepEqual([team.hits, team.total, team.grade], [3, 3, "S"]);
-  assert.equal(team.score, player(s, 1, START + 1700).score + player(s, 2, START + 1700).score);
+  assert.equal(team.score, player(s, 1, START + 1700).score + player(s, 2, START + 1700).score + 75); // plus the bonuses (seat 1 won both)
 });
 
 test("a phone that leaves mid-song leaves its part unplayed, and the team no longer counts it", () => {
@@ -614,16 +613,151 @@ test("a seat with no notes in its part is done at once and gives the team nothin
   assert.equal(end.team.grade, "S");
 });
 
-test("section: a name for the floor, kept as set, checked", () => {
+// ---- Wave 5: the train, the QR address, bonuses ----
+
+const RED = { line: "Red", directionId: 0, headsign: "Ashmont/Braintree", atStopId: "place-pktrm", atStopName: "Park Street", car: 3 };
+
+test("train: the default is Green B at Boston University Central, car 2, and the State's train is a copy", () => {
+  assert.deepEqual(DEFAULT_TRAIN, { line: "Green-B", directionId: 1, headsign: "Government Center", atStopId: "place-bucen", atStopName: "Boston University Central", car: 2 });
   const s = createSession({ songs });
-  assert.deepEqual(s.snapshot(0).section, { name: "Car 2, front" });
-  assert.equal(s.setSection("  Car 5, back  "), true);
-  assert.deepEqual(s.snapshot(0).section, { name: "Car 5, back" });
-  for (const bad of ["", "   ", "x".repeat(31), 5, null, undefined]) assert.equal(s.setSection(bad), false);
-  assert.deepEqual(s.snapshot(0).section, { name: "Car 5, back" });
-  assert.equal(createSession({ songs, section: "Car 1" }).snapshot(0).section.name, "Car 1");
-  assert.equal(createSession({ songs, section: "" }).snapshot(0).section.name, "Car 2, front"); // a broken saved value is ignored
-  assert.equal(createSession({ songs, section: 7 }).snapshot(0).section.name, "Car 2, front");
+  assert.deepEqual(s.snapshot(0).train, DEFAULT_TRAIN);
+  s.snapshot(0).train.car = 9;
+  assert.equal(s.snapshot(0).train.car, 2);
+  assert.equal("section" in s.snapshot(0), false);
+});
+
+test("train: a saved train is used, a broken one is ignored, and setTrain checks every part", () => {
+  assert.deepEqual(createSession({ songs, train: RED }).snapshot(0).train, RED);
+  const junk = [undefined, null, "Red", 7, {}, { ...RED, line: "Purple" }, { ...RED, line: "constructor" }, { ...RED, directionId: 2 }, { ...RED, directionId: "0" },
+    { ...RED, headsign: "" }, { ...RED, atStopId: 5 }, { ...RED, atStopName: undefined }, { ...RED, car: 0 }, { ...RED, car: 13 }, { ...RED, car: 1.5 }, { ...RED, car: "3" }];
+  for (const bad of junk) assert.deepEqual(createSession({ songs, train: bad }).snapshot(0).train, DEFAULT_TRAIN);
+  const s = createSession({ songs });
+  assert.equal(s.setTrain({ ...RED, extra: "dropped" }), true);
+  assert.deepEqual(s.snapshot(0).train, RED);
+  for (const bad of junk) assert.equal(s.setTrain(bad), false);
+  assert.deepEqual(s.snapshot(0).train, RED); // a refused train changes nothing
+});
+
+test("train: the address names the train, and a part that is missing or wrong falls back to the default's", () => {
+  assert.deepEqual(trainFromAddress("?demo=1&feet=mouse&line=Red&dir=0&at=place-pktrm&car=3"), { ...RED, atStopName: "place-pktrm" }); // the name is not in the address
+  assert.deepEqual(trainFromAddress("?line=Green-B&dir=1&at=place-bucen&car=2"), DEFAULT_TRAIN);
+  assert.equal(trainFromAddress(""), null);
+  assert.equal(trainFromAddress("?demo=1&feet=mouse"), null); // names none of the four
+  assert.deepEqual(trainFromAddress("?car=4"), { ...DEFAULT_TRAIN, car: 4 });
+  assert.deepEqual(trainFromAddress("?line=Orange"), { ...DEFAULT_TRAIN, line: "Orange", headsign: "Oak Grove" }); // headsign follows line and direction
+  for (const search of ["?line=Nope&dir=7&at=&car=99", "?line=constructor&dir=-1&car=abc", "?line=__proto__&car=0", "?car=2.5", "?car=%E2%82%82"]) {
+    assert.deepEqual(trainFromAddress(search), DEFAULT_TRAIN, search);
+  }
+  assert.equal(createSession({ songs, train: trainFromAddress("?line=Blue&dir=1&at=place-state&car=1") }).snapshot(0).train.headsign, "Wonderland");
+});
+
+test("train: the QR address carries the train, and reading it back gives the same train", () => {
+  assert.equal(trainQuery(DEFAULT_TRAIN), "?line=Green-B&dir=1&at=place-bucen&car=2");
+  assert.equal(trainQuery(RED), "?line=Red&dir=0&at=place-pktrm&car=3");
+  const phone = new URL("http://192.168.1.20:5173/" + trainQuery(RED));
+  assert.deepEqual(trainFromAddress(phone.search), { ...RED, atStopName: "place-pktrm" });
+  for (const line of ["Red", "Mattapan", "Orange", "Blue", "Green-B", "Green-C", "Green-D", "Green-E"]) {
+    for (const directionId of [0, 1]) {
+      const t = trainFromAddress(trainQuery({ ...DEFAULT_TRAIN, line, directionId }));
+      assert.deepEqual([t.line, t.directionId, t.atStopId, t.car], [line, directionId, "place-bucen", 2]);
+      assert.deepEqual(createSession({ songs }).setTrain(t), true); // every train the address can make is one the session accepts
+    }
+  }
+});
+
+// Runs from wall time 0 until just past the song's end, so the results show.
+const playOut = (s, song, feetAt) => run(s, 0, START + Math.ceil(songMs(song)) + 300, feetAt);
+const songMs = (song) => Math.max(...song.notes.map((n) => n.beat + n.beats)) * (60000 / song.bpm);
+
+test("bonus: 50 to the best combo and 25 to the most perfects, split between two seats when each wins one", () => {
+  const s = twoSeated();
+  start(s, ["long"]);
+  const late = play(long, [1, 2], [1], 200); // seat 1 steps every tile 200 ms late: all good, none perfect, never a miss
+  const clean = play(long, [1, 2], [2]); // seat 2 is perfect except for a gap of two tiles
+  playOut(s, long, (wall) => ({ ...late(wall), ...(wall >= START + 7500 && wall < START + 8600 ? {} : clean(wall)) }));
+  const end = s.snapshot(START + 17000);
+  assert.equal(end.status, "results");
+  const [a, b] = end.players;
+  assert.deepEqual([a.counts.perfect, a.counts.miss, a.maxCombo], [0, 0, 16]); // the premise: seat 1 has the combo
+  assert.ok(b.counts.perfect > 0 && b.counts.miss > 0 && b.maxCombo < 16, "seat 2 has the perfects");
+  assert.deepEqual([a.bonus, a.bonusFor], [50, "Best combo"]);
+  assert.deepEqual([b.bonus, b.bonusFor], [25, "Most perfects"]);
+  assert.equal(end.team.score, a.score + b.score + 75); // the team total includes bonuses
+});
+
+test("bonus: one seat that wins both gets 75 and both reasons; the other gets nothing", () => {
+  const s = twoSeated();
+  start(s, ["tiny"]);
+  playOut(s, tiny, play(tiny, [1, 2])); // seat 1 plays two notes, seat 2 one: both step everything
+  const [a, b] = s.snapshot(START + 1700).players;
+  assert.deepEqual([a.bonus, a.bonusFor], [75, "Best combo, Most perfects"]);
+  assert.deepEqual([b.bonus, b.bonusFor], [0, null]);
+  assert.equal(s.snapshot(START + 1700).team.score, a.score + b.score + 75);
+});
+
+test("bonus: a tie gives the bonus to every seat tied", () => {
+  const s = createSession({ songs });
+  s.apply({ type: "join", clientId: "ann" }, 0);
+  for (const spotId of [1, 2, 3]) s.apply({ type: "claim", clientId: "ann", spotId }, 0);
+  start(s, ["scale"]); // the seats' parts are 3, 2 and 3 notes
+  playOut(s, scale, play(scale, [1, 2, 3]));
+  const end = s.snapshot(START + 4700);
+  assert.deepEqual(end.players.map((p) => [p.bonus, p.bonusFor]), [[75, "Best combo, Most perfects"], [0, null], [75, "Best combo, Most perfects"]]);
+  assert.equal(end.team.score, end.players.reduce((n, p) => n + p.score + p.bonus, 0));
+});
+
+test("bonus: nobody scores a combo or a perfect, nobody gets a bonus", () => {
+  const s = twoSeated();
+  start(s, ["tiny"]);
+  playOut(s, tiny, () => ({})); // nobody steps
+  const end = s.snapshot(START + 1700);
+  assert.equal(end.status, "results");
+  assert.deepEqual(end.players.map((p) => [p.bonus, p.bonusFor]), [[0, null], [0, null]]);
+  assert.equal(end.team.score, 0);
+});
+
+test("bonus: none while the song plays or when it is skipped, and the next song starts clean", () => {
+  const s = twoSeated();
+  start(s, ["tiny", "other"]);
+  run(s, 0, START + 600, play(tiny, [1, 2])); // seat 1 has hit its first notes, the song is not over
+  assert.deepEqual(s.snapshot(START + 600).players.map((p) => p.bonus), [0, 0]);
+  s.apply({ type: "skip", clientId: "ann" }, START + 700); // a skipped song pays nothing
+  assert.deepEqual(s.snapshot(START + 700).players.map((p) => [p.bonus, p.bonusFor]), [[0, null], [0, null]]);
+  const from = START + 700;
+  const feet = (wall) => play(other, [1, 2], [1, 2], from)(wall);
+  run(s, from, from + START + 1200, feet);
+  assert.equal(s.snapshot(from + START + 1200).status, "results");
+  assert.equal(s.snapshot(from + START + 1200).players[0].bonus, 75);
+});
+
+test("bonus: cleared when the next song starts and when the game goes back to the lobby", () => {
+  const s = twoSeated();
+  start(s, ["tiny", "other"]);
+  run(s, 0, START + 1700, play(tiny, [1, 2]));
+  assert.equal(player(s, 1, START + 1700).bonus, 75);
+  const began = START + 1500;
+  assert.equal(s.tick(began + RESULTS_MS, {}).status, "countdown");
+  assert.deepEqual(s.snapshot(began + RESULTS_MS).players.map((p) => [p.bonus, p.bonusFor]), [[0, null], [0, null]]);
+  s.apply({ type: "stop", clientId: "ann" }, began + RESULTS_MS + 100);
+  assert.deepEqual(s.snapshot(began + RESULTS_MS + 100).players.map((p) => [p.bonus, p.bonusFor]), [[0, null], [0, null]]);
+});
+
+test("bonus: a seat that left before the end is not counted, and a seat with no notes gets nothing", () => {
+  const s = twoSeated();
+  start(s, ["long"]);
+  run(s, 0, START + 100);
+  s.apply({ type: "leave", clientId: "ben" }, START + 100); // seat 1 plays the rest alone
+  run(s, START + 120, START + 16800, play(long, [1, 2], [1]));
+  const end = s.snapshot(START + 16800);
+  assert.equal(end.status, "results");
+  assert.deepEqual(end.players.map((p) => [p.spotId, p.bonus]), [[1, 75]]);
+  const one = { id: "one", title: "One note", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 1 }] };
+  const solo = createSession({ songs: [one] });
+  solo.apply({ type: "join", clientId: "ann" }, 0);
+  for (const spotId of [1, 2, 3]) solo.apply({ type: "claim", clientId: "ann", spotId }, 0);
+  solo.apply({ type: "start", clientId: "ann", songIds: ["one"] }, 0);
+  run(solo, 0, START + 1000, play(one, [1, 2, 3]));
+  assert.deepEqual(solo.snapshot(START + 1000).players.map((p) => p.bonus), [75, 0, 0]);
 });
 
 test("notice: { for, text }, for the phone that sent the refused command, gone after 4 seconds", () => {

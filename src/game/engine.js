@@ -62,10 +62,11 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
   return {
     lanes,
     total: tiles.length,
-    // feet: [{ u, v }]. Returns what to draw and what happened this frame.
+    // feet: [{ u, v, lifted? }]. Returns what to draw and what happened this frame.
     update(nowMs, feet) {
       const events = [];
-      const footIn = (lane) => feet.find((f) => f.v >= ZONE_V && f.v <= 1 && laneAt(f.u) === lane);
+      const inLane = (f, lane) => f.v >= ZONE_V && f.v <= 1 && laneAt(f.u) === lane;
+      const footIn = (lane) => feet.find((f) => inLane(f, lane));
       const emit = (type, t, grade) => {
         const f = footIn(t.lane);
         events.push({ type, lane: t.lane, midi: t.midi, grade, u: f ? f.u : (t.lane + 0.5) / lanes, v: f ? f.v : HIT_V });
@@ -88,7 +89,10 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
 
       // 1. Steady foot count per lane, and how many feet arrived this frame.
       const arrivals = squares.map((sq, lane) => {
-        const raw = feet.filter((f) => f.v >= ZONE_V && f.v <= 1 && laneAt(f.u) === lane).length;
+        // A foot with `lifted: true` is in the air: it does not count, and when no other foot stands there the
+        // lane is empty at once. The flicker wait is only for a foot the tracker lost (a foot missing from `feet`).
+        const raw = feet.filter((f) => !f.lifted && inLane(f, lane)).length;
+        if (raw === 0 && feet.some((f) => f.lifted && inLane(f, lane))) sq.samples = [];
         if (raw > 0) sq.lastSeen = nowMs;
         sq.samples = sq.samples.filter((s) => s.at > nowMs - FLICKER_MS);
         sq.samples.push({ at: nowMs, raw });

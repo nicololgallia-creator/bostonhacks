@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform Piano: seat tracking check</title>
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; background: #000; color: #fff; font: 16px/1.4 system-ui, sans-serif; }
+  #bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 16px; }
+  select { font: inherit; min-height: 44px; }
+  #stats { margin-left: auto; font-variant-numeric: tabular-nums; }
+  #error { margin: 0 16px 8px; padding: 10px 16px; border: 2px solid #ff5a5a; color: #ff9a9a; }
+  #stage { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+  #stage > video, #stage > img { display: block; max-width: 100%; max-height: 440px; }
+  #stage > canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #seats { display: flex; gap: 12px; padding: 8px 16px; }
+  #seats[hidden] { display: none; }
+  .seat { flex: 1; min-width: 0; border: 2px solid var(--c); padding: 6px 10px; }
+  .seat b { color: var(--c); }
+  .seat canvas { display: block; width: 100%; height: 90px; background: #111; margin-top: 4px; }
+  #hint { padding: 0 16px 8px; color: #aaa; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <label>Camera <select id="camera"></select></label>
+  <label>Seats <select id="count"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+  <label>Model <select id="model"><option value="lite">lite (faster)</option><option value="full">full (more accurate)</option></select></label>
+  <label>Tracker <select id="mode"><option value="sliced">one pose for each seat</option><option value="whole">whole picture, for comparison</option></select></label>
+  <span id="stats"></span>
+</div>
+<div id="error" hidden></div>
+<div id="stage"></div>
+<div id="seats"></div>
+<div id="hint">Drag the left and right edges of the slices so each seat's person is inside one slice. Graph: a foot's height above its lowest point in the last 5 seconds, in shins. A tap is a bump, and the dashed line is where a lift starts to count (8% of a shin).</div>
+<script type="module" src="/src/track/seats-debug.js"></script>
+</body>
+</html>

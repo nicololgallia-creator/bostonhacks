@@ -18,7 +18,17 @@ function cameraReason(e) {
 export function createTrackedFeet({ model = "lite" } = {}) {
   const replayUrl = new URLSearchParams(location.search).get("replay");
   const video = replayUrl ? null : document.createElement("video"); // the setup shows this picture
-  if (video) { video.muted = true; video.playsInline = true; }
+  if (video) {
+    video.muted = true;
+    video.playsInline = true;
+    // The browser pauses a video that is taken off the page, and a paused camera hands out the
+    // same old frame for ever (found on the real DJI, Sat 21 Nov: setup's still was stale).
+    // So this video lives on the page for good, out of sight, and nothing ever moves it.
+    Object.assign(video.style, { position: "fixed", left: "0", top: "0", width: "2px", height: "2px", opacity: "0.01", pointerEvents: "none" });
+    video.setAttribute("aria-hidden", "true");
+    document.body.append(video);
+    video.addEventListener("pause", () => { if (video.srcObject) video.play().catch(() => {}); });
+  }
   const pipeline = createPipeline({ cameraToField: null });
   let matrix = null;
   let source = null;
@@ -38,6 +48,7 @@ export function createTrackedFeet({ model = "lite" } = {}) {
   function closeStream() {
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = null;
+    if (video) video.srcObject = null; // lets the camera go, and the setup's preview video lets go with it
   }
 
   // Opens the saved camera, or the first one when none is saved or the saved one is unplugged.

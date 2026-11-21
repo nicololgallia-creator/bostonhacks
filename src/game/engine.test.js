@@ -243,3 +243,53 @@ test("a part with no notes finishes at once and has no grade", () => {
   const r = createGame({ song: { id: "empty", bpm: 120, notes: [] }, lanes: 2 }).update(0, NONE);
   assert.deepEqual([r.done, r.total, r.grade], [true, 0, null]);
 });
+
+// Feet with a `lifted` flag, as the seat tap detector hands them over.
+const down = [{ u: 0.1, v: 0.9, lifted: false }];
+const up = [{ u: 0.1, v: 0.9, lifted: true }];
+
+test("a foot resting on its square, lifting and landing hits a tap tile", () => {
+  const game = createGame({ song: tiny, players: 1 }); // the first tile is in lane 0 at 0 ms
+  // Down from far before the tile, in the air from -200 ms, lands at 20 ms.
+  const { r, events } = run(game, -1000, 200, (t) => (t >= -200 && t < 20 ? up : down));
+  assert.deepEqual(events.map((e) => [e.type, e.grade, e.lane]), [["hit", "perfect", 0]]);
+  assert.equal(r.counts.perfect, 1);
+  // Staying down the whole time is still not a hit.
+  const still = run(createGame({ song: tiny, players: 1 }), -1000, 320, () => down);
+  assert.equal(still.r.counts.perfect + still.r.counts.good, 0);
+});
+
+test("a landing after even one frame in the air is an arrival", () => {
+  const game = createGame({ song: pair, players: 1 }); // taps in lane 0 at 0 and 400 ms
+  const { events } = run(game, -1000, 500, (t) => (t >= -100 && t < -80 ? up : t >= 300 && t < 320 ? up : down));
+  assert.deepEqual(events.map((e) => [e.type, e.midi]), [["hit", 60], ["hit", 60]]);
+});
+
+test("a foot staying down holds a hold tile, and lifting ends it at once", () => {
+  const full = run(createGame({ song: holdSong, players: 1 }), -200, 2100, (t) => (t >= -60 ? down : NONE));
+  assert.deepEqual(full.events.filter((e) => e.lane === 0).map((e) => [e.type, e.grade]), [["holdStart", "perfect"], ["holdEnd", "perfect"]]);
+  assert.equal(full.r.score, 100 + 20 * 4);
+
+  // Down until 1100 ms (past half the hold), then in the air: the hold ends on the very next frame, as good.
+  const endTime = (after) => {
+    const game = createGame({ song: holdSong, players: 1 });
+    for (let t = -200; t <= 1500; t += 20) {
+      const feet = t < -60 ? NONE : t <= 1100 ? down : after;
+      if (game.update(t, feet).events.some((e) => e.type === "holdEnd")) return t;
+    }
+  };
+  assert.equal(endTime(up), 1120);
+  assert.ok(endTime(NONE) >= 1100 + 150); // a foot the tracker lost still waits out the flicker time
+  const game = createGame({ song: holdSong, players: 1 });
+  const { r } = run(game, -200, 1500, (t) => (t < -60 ? NONE : t <= 1100 ? down : up));
+  assert.deepEqual([r.counts.good, r.counts.miss, r.combo], [1, 0, 1]);
+});
+
+test("feet with lifted: false behave exactly like feet with no lifted field", () => {
+  const feetAt = (flag) => (t) => (t >= 0 && t < 40) || (t >= 400 && t < 440) ? [{ u: 0.1, v: 0.9, ...flag }] : NONE;
+  const a = run(createGame({ song: pair, players: 1 }), -200, 2000, feetAt({}));
+  const b = run(createGame({ song: pair, players: 1 }), -200, 2000, feetAt({ lifted: false }));
+  assert.deepEqual(b.events, a.events);
+  assert.deepEqual(b.r, a.r);
+  assert.equal(a.r.counts.perfect, 2);
+});
