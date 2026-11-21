@@ -17,7 +17,7 @@ export function linkPlugin() {
   const attach = (server) => {
     server.middlewares.use("/lan", (req, res) => {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ urls: lanUrls(server.config.server.port ?? 5173) }));
+      res.end(JSON.stringify({ urls: lanUrls(req.socket.localPort ?? server.config.server.port ?? 5173) })); // the port this request came in on: the built copy runs on another port than the dev server
     });
 
     const wss = new WebSocketServer({ noServer: true });
