@@ -371,6 +371,29 @@ function keepFit() {
 }
 // ---- end install ----
 
+// ---- operator buttons: two small buttons in the lobby for whoever runs the floor, so nobody needs to know a key.
+// Nicolo, Sat 21 Nov: "it has a small button for calibration of camera and sensors to make sure its working first".
+// They are upright for the person at the laptop (not turned with the picture), small, in a corner, and only in the lobby.
+// A click on either also opens the sound, which a browser keeps shut until someone touches the page. ----
+{
+  const bar = document.createElement("div");
+  bar.className = "stage-ops";
+  const button = (label, onClick) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", () => { synth.unlock(); synth.load?.(); onClick(); b.blur(); }); // blur: Space and Enter must not press it again
+    return b; // (mouse feet listen on the canvas only, so a press here is never a foot)
+  };
+  bar.append(
+    button("Calibrate", () => setup()),
+    button("Full screen", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen())),
+  );
+  document.body.append(bar);
+  setInterval(() => { bar.hidden = snap.status !== "lobby" || !!setupHandle; }, 250);
+}
+// ---- end operator buttons ----
+
 if (feetSource instanceof Error) {
   document.getElementById("app").innerHTML = `<p class="error">${feetSource.message}</p>`;
 } else if (install && feetSource.raw) {
