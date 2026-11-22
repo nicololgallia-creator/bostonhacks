@@ -48,6 +48,13 @@ Everything that goes on the Devpost page, in one place. Fill in each `TODO`, the
   - Creativity, the "Spark" factor: people who try it want to bring someone over to see it.
   - Technical execution: usable right away, with no setup, instructions, or extra development.
   - Build-out vision: a clear, realistic idea of what the $1,000 equipment budget adds. Draft below.
+  - Facts from the organisers' own doc, "Hack Our Space! Prize 2026-2027" (read in full by the lead's Claude on Sat 21 Nov, 9:55 PM: https://docs.google.com/document/d/1-kdotQLWTW1eAzaz2IL3RyrYiG09FCKZ8zkaTYMAANA):
+    - The prize: "$500 (a Visa gift card, awarded after the event)", plus "automatic entry into the Spark! Innovation Program, track of their choice, and an equipment budget of up to $1,000 to fully build out the project."
+    - The bar: "It doesn't need to be polished, but it does need to be a working prototype that we could install in our space right away."
+    - **Who may enter: "this challenge is now open to non-BU students with the requirement that projects are a full handoff so we can install them immediately in our space."** Nicolo is at Bentley, so this applies to us: the entry needs a handoff a stranger can install (see docs/SETUP.md), and the floor must start with no setup.
+    - What they want: hacks that "turn everyday features of our lab into moments of surprise, delight and playful interaction", for example "seats that react when someone sits down, walkways that come alive with sound or light".
+    - Their own idea list is close to ours in two places, so say how TTiles differs: "Chair Symphony" (pressure sensors under 6 to 10 chairs that play a note when someone sits) and "Approach Detector" (a ceiling projector draws glowing footsteps). They add: "We have projectors if someone wants to try this out!" and their table "should have" a projector and a camera.
+    - Their note on networks: "Many hobby boards can't connect to campus Wi-Fi, so design your hack to work offline where you can." TTiles plays with no internet when the phone and the laptop share a network (the laptop's own address is the QR fallback); the public phone page needs internet.
 - **Other prizes:** TODO, check the Devpost prize list (PLAN.md mentions a GoDaddy domain prize).
 
 ## Links
@@ -106,6 +113,14 @@ TODO, for the Spark entry only. Say what the $1,000 adds, and check every price 
 - A brighter short-throw projector mounted overhead, so the picture is bigger and players do not shadow their own tiles.
 - A depth camera, so tracking does not depend on light.
 - A permanent install in the Spark! lab with no setup, starting in the lobby screen.
+
+Numbers the pitch deck uses (from Nicolo's other Claude session, which says it checked the prices on 21 Nov 2026; the lead's Claude has NOT re-checked them, so open each listing once before this goes on the page):
+| Item | What it adds | Price |
+|---|---|---|
+| 4,000-lumen short-throw projector (ViewSonic PS502X) | A big, bright picture from close up, readable with the lights on | $529.99 at Walmart, budgeted $530 |
+| Depth camera (Intel RealSense D435) | Tracking that does not depend on the room's light | $339.99 at Staples, budgeted $340 |
+| Mount and cables | Fixed overhead, nothing to set up each day | $130 allowance |
+| **Total** | | **$1,000** |
 
 ## Image gallery
 
