@@ -22,6 +22,10 @@ export const PAD_V = 0.8; // inside the square (it runs from v 0.55 to 1)
 // calibration(), but only set on the tap detector when this is true. OFF: on the real two-person recording, the calibration
 // that replaces the shin-share threshold gave seat 2 two false taps at rest where the defaults gave none (reports/tracker-6.md).
 export const CALIBRATE_FROM_WARMUP = false;
+// The seat lines follow people only while nobody is playing. From the warm-up to the results they hold still, like the pads:
+// a line that moves under a player in the middle of a song changes what the tracker looks at. A page that never says the
+// game's status (seats.html) has no game, so its lines may always move.
+export const linesMayMove = (status) => status == null || status === "lobby";
 
 const saved = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
 
@@ -139,7 +143,8 @@ export function glowFeet(layout, byPad) {
 // In install mode nobody is at the keyboard and the stage looks again every few seconds by itself, so the sentence says what to do with the gear, not "reload".
 function cameraReason(e, install = false) {
   if (!navigator.mediaDevices) return "The browser only allows the camera on localhost or https. Open this page at http://localhost:5173 on the laptop.";
-  if (install && e.name === "NotAllowedError") return "The browser blocked the camera. Close this window and start TTiles again with start-ttiles.";
+  // The double-click start (start-ttiles.cmd) opens the laptop's own address with no address bar. The one link (ttiles.us/floor) is an ordinary tab.
+  if (install && e.name === "NotAllowedError" && ["localhost", "127.0.0.1"].includes(location.hostname)) return "The browser blocked the camera. Close this window and start TTiles again with start-ttiles.";
   if (install && e.name === "NotFoundError") return "No camera found. Plug the camera in and turn on webcam mode on it.";
   if (install && e.name === "NotReadableError") return "Another app is using this camera. Close it (Zoom, the DJI app, another browser tab).";
   if (e.name === "NotAllowedError") return "The browser blocked the camera. Click the camera icon in the address bar, choose Allow, and reload.";
@@ -180,6 +185,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   let fitted = !!saved(slicesKey(layout.spots.length)); // lines for this many seats were fitted, dragged or saved before
   let held = false; // following is off for this session only (a line was dragged)
   let lastFollow = 0;
+  let gameStatus = null; // the State's status, as calibrate() last heard it
   let latest = null; // the last bySpot frame's read-out (lastFrame)
   const seenN = new Map(); // spotId -> the picture counter the tap detector last saw for that seat
   let lastFeet = []; // the tap detector's last answer, kept for the screen frames between two camera pictures
@@ -200,7 +206,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
 
   // Each seat's own hips pull its dividers toward the fit, slowly (slices.js). A pose dropped as a neighbour's has someone else's hips, so it does not count.
   function follow(now) {
-    if (!following() || !seats || now - lastFollow < FOLLOW_EVERY_MS) return;
+    if (!following() || !linesMayMove(gameStatus) || !seats || now - lastFollow < FOLLOW_EVERY_MS) return;
     const dt = Math.min(now - lastFollow, FOLLOW_MAX_DT);
     lastFollow = now;
     const poses = poseList();
@@ -303,7 +309,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       }
     },
     // Each frame, with the State's status and players [{ spotId, clientId }]: learns each player's own tap from the warm-up (createCalibrator).
-    calibrate: (status, players) => calib.round(status, players),
+    calibrate: (status, players) => { gameStatus = status; calib.round(status, players); },
     // What the warm-up taught about each player: { [spotId]: { taps, medianPeak, medianLiftMs, minLift } }, only for seats with 3 or more
     // taps. Set on the tap detector only when CALIBRATE_FROM_WARMUP is true.
     calibration: () => calib.result(),

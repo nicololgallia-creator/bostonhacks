@@ -373,7 +373,7 @@ function keepFit() {
 }
 // ---- end install ----
 
-// ---- operator buttons: two small buttons in the lobby for whoever runs the floor, so nobody needs to know a key.
+// ---- operator buttons: three small buttons in the lobby for whoever runs the floor, so nobody needs to know a key.
 // Nicolo, Sat 21 Nov: "it has a small button for calibration of camera and sensors to make sure its working first".
 // They are upright for the person at the laptop (not turned with the picture), small, in a corner, and only in the lobby.
 // A click on either also opens the sound, which a browser keeps shut until someone touches the page. ----
@@ -389,10 +389,11 @@ function keepFit() {
   };
   bar.append(
     button("Calibrate", () => setup()),
+    button("Test tracking", () => toggleTrackTest()), // the guided test (key G): a minute of sitting still and tapping, saved as two files
     button("Full screen", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen())),
   );
   document.body.append(bar);
-  setInterval(() => { bar.hidden = snap.status !== "lobby" || !!setupHandle; }, 250);
+  setInterval(() => { bar.hidden = snap.status !== "lobby" || !!setupHandle || !!trackTest; }, 250);
 }
 // ---- end operator buttons ----
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, freshSeats, createCalibrator, createSeatSource, CALIBRATE_FROM_WARMUP, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, freshSeats, createCalibrator, createSeatSource, CALIBRATE_FROM_WARMUP, LANE_U, ONE_LANE_U, PAD_V, linesMayMove } from "./seatsource.js";
 import { readFileSync as readRecording } from "node:fs";
 import { createTapDetector as newTapDetector } from "./taps.js";
 
@@ -354,4 +354,11 @@ test("setActive: a seat left out shows no feet, makes no taps and its picture co
     globalThis.fetch = real.fetch;
     Object.defineProperty(globalThis, "performance", real.perf);
   }
+});
+
+test("seat lines: they follow people in the lobby and hold still from the warm-up to the results", () => {
+  assert.equal(linesMayMove("lobby"), true);
+  for (const status of ["warmup", "countdown", "playing", "paused", "results"]) assert.equal(linesMayMove(status), false, status);
+  assert.equal(linesMayMove(null), true); // a page with no game (seats.html)
+  assert.equal(linesMayMove(undefined), true);
 });
