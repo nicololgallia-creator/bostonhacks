@@ -1,0 +1,49 @@
+/* The tracking test, drawn over the whole floor. Sizes are shares of the window's height (1vh): no text is smaller than
+   1/14 of it (7.15vh), because people read it from a seat across the aisle. Colours come from the line's theme
+   (--tt-field) and the seat colours (--seat, --seat-ink) that tracktest.js sets; ink is the team's #141413. */
+.tt {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 20;
+  overflow: hidden;
+  background: var(--tt-field);
+  color: #141413;
+  font-family: Nunito, system-ui, sans-serif;
+  font-weight: 800;
+  user-select: none;
+}
+.tt-kicker, .tt-line, .tt-count, .tt-hint { position: absolute; left: 5vw; right: 5vw; margin: 0; text-align: center; }
+.tt-kicker { top: 3vh; font-size: 7.5vh; line-height: 1; }
+.tt-line { top: 11vh; font: 400 9.5vh/1.05 "Lilita One", "Arial Black", system-ui, sans-serif; text-wrap: balance; }
+.tt-count { top: 36vh; font: 400 15vh/1 "Lilita One", "Arial Black", system-ui, sans-serif; }
+/* The beat you can see: an ink disc in the middle that swells on each beat and fades. */
+.tt-beat { position: absolute; left: 50%; top: 36vh; width: 15vh; height: 15vh; margin-left: -7.5vh; border-radius: 50%; background: #141413; opacity: 0; }
+.tt-bar { position: absolute; left: 5vw; right: 5vw; top: 55vh; height: 4vh; border-radius: 2vh; background: rgba(20, 20, 19, 0.16); overflow: hidden; }
+.tt-bar > i { display: block; height: 100%; border-radius: 2vh; background: #141413; transform-origin: left center; }
+/* A seat's number, in its colour, at its pad's foot square. */
+.tt-seat {
+  position: absolute;
+  width: 17vh;
+  height: 17vh;
+  margin: -8.5vh 0 0 -8.5vh;
+  display: grid;
+  place-items: center;
+  border: 0.9vh solid #141413;
+  border-radius: 50%;
+  background: var(--seat);
+  color: var(--seat-ink);
+  font: 400 10.5vh/1 "Lilita One", "Arial Black", system-ui, sans-serif;
+}
+.tt-card { position: absolute; inset: 0; padding: 2.5vh 4vw 12vh; display: flex; flex-direction: column; justify-content: center; gap: 3vh; }
+.tt-card h1 { margin: 0; font: 400 11vh/1 "Lilita One", "Arial Black", system-ui, sans-serif; text-align: center; }
+.tt-rows { display: grid; grid-template-columns: repeat(var(--cols, 1), 1fr); gap: 2vh 3vw; }
+.tt-row { display: flex; align-items: center; gap: 1.5vw; min-width: 0; }
+.tt-row .tt-seat { position: static; flex: none; margin: 0; width: 11vh; height: 11vh; font-size: 7.5vh; border-width: 0.7vh; }
+.tt-stats { display: grid; font-size: 7.2vh; line-height: 1.15; white-space: nowrap; }
+.tt-total { margin: 0; font-size: 7.2vh; line-height: 1.1; text-align: center; }
+.tt-hint { top: auto; bottom: 2vh; font-size: 7.2vh; line-height: 1.1; }
+/* The one line the operator sees when the test cannot run in this mode. */
+.tt-note { position: fixed; left: 2vw; right: 2vw; top: 2vh; z-index: 30; padding: 1.5vh 2vw; border-radius: 2vh; background: #141413; color: #fff; font: 800 7.2vh/1.1 Nunito, system-ui, sans-serif; }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
 import { createTapDetector } from "./taps.js";
 import { makeLayout } from "../stage/layout.js";
 import { createGame } from "../game/engine.js";
@@ -186,4 +186,14 @@ test("tappedX: two lanes know the foot by name, one lane takes the foot that cam
   assert.equal(tappedX({ spotId: 1, foot: 0 }, feet, { 1: 1 }, drop), 0.4); // one lane: the tap says foot 0, but foot 1 came down
   assert.equal(tappedX({ spotId: 3, foot: 0 }, feet), null);
   assert.equal(tappedX({ spotId: 3, foot: 0 }, feet, { 3: 1 }), null);
+});
+
+test("read-out: the lifted map has every seat, true when any of its feet is in the air", () => {
+  const poses = [{ spotId: 1 }, { spotId: 2 }, { spotId: 3 }];
+  const feet = [{ spotId: 1, foot: 0, lifted: true }, { spotId: 2, foot: 0, lifted: false }];
+  const r = frameReadout(12.5, [{ spotId: 1 }], feet, [{ spotId: 1 }], [{ spotId: 1, foot: 0, atMs: 12.5, x: 0.4 }], poses);
+  assert.deepEqual(r.lifted, { 1: true, 2: false, 3: false });
+  assert.equal(r.t, 12.5);
+  assert.equal(r.taps[0].x, 0.4);
+  assert.equal(r.poses, poses);
 });

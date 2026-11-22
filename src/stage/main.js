@@ -1,6 +1,6 @@
 // The projected game. Phones join, pick seats and start songs over the link; this page is the one
 // source of truth (session.js), draws the floor and plays the sound.
-// Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate),
+// Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate), G the tracking test (?feet=seats; also ?test=1),
 // T turns the picture half way round (the projector and camera face the players; saved, also ?facing=1 or ?facing=0).
 // URL options: ?feet=mouse (the default; the whole picture is the field) ?feet=camera (feet from the camera, after setup) or ?feet=seats (seated play: tap in place, one slice of the picture for each seat),
 // ?demo=1 (a guest in every seat, Space starts the songs), ?autostart=1 (with demo, starts at once).
@@ -21,6 +21,7 @@ import { applyKeystone } from "./keystone.js";
 import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
 import { createFollower } from "./autoplace.js"; // autoplace block below
+import { openTrackTest, sayNeedsSeats } from "./tracktest.js"; // tracktest block below
 
 const LAYOUT_KEY = "pp:layout";
 const TRAIN_KEY = "pp:train"; // the train this floor is in: line, direction, stop, car
@@ -198,13 +199,26 @@ if (feetSource.feetX) {
 }
 // ---- end autoplace ----
 
+// ---- tracktest: the guided tracking test (src/stage/tracktest.js). Key G or ?test=1; ?testspeed=4 squeezes the run for a scripted check. ----
+// While it is up it draws over the floor, so the game does not draw, and it picks the lanes (the same as real play).
+let trackTest = null;
+function toggleTrackTest() {
+  if (trackTest) return trackTest.close();
+  if (setupHandle) return; // setup has the floor
+  if (!feetSource.lastFrame) return sayNeedsSeats();
+  trackTest = openTrackTest({ feet: feetSource, layout: snap.layout, lineId: snap.train.line, speed: Number(params.get("testspeed")) || 1, onClose: () => { trackTest = null; } });
+  window.trackTest = trackTest; // for a scripted check
+}
+// ---- end tracktest ----
+
 let padLanes = {}; // how many lanes each pad had on the last frame, for a seated source
 function frame() {
   const now = clock();
   // A seated source already gives each seat's feet in pad coordinates; the others give field feet that are sorted into pads.
   const seated = !!feetSource.bySpot;
   const read = seated ? null : feetSource.read();
-  const byPad = seated ? feetSource.bySpot(padLanes) : feetBySpot(snap.layout, read);
+  const byPad = seated ? feetSource.bySpot(trackTest?.lanes() ?? padLanes) : feetBySpot(snap.layout, read);
+  trackTest?.frame();
   const fieldFeet = seated ? glowFeet(snap.layout, byPad) : read;
   const view = session.tick(now, byPad);
   padLanes = Object.fromEntries(view.pads.map((p) => [p.spotId, p.lanes])); // a lone player has 2 lanes, one for each foot; with more players each has 1
@@ -213,7 +227,7 @@ function frame() {
   playSounds(events);
   if (snap.settings.volume !== appliedVolume) { appliedVolume = snap.settings.volume; synth.setVolume?.(appliedVolume); }
   if (view.status === "countdown" || view.status === "playing") synth.backing?.(view.song, view.songMs + session.offsetMs());
-  draw({
+  if (!trackTest) draw({
     status: view.status,
     layout: snap.layout,
     pads: view.pads.map((p) => ({ ...p, tiles: shifted(p.tiles), feet: (byPad[p.spotId] ?? []).filter((f) => !f.lifted) })), // a foot in the air does not light its lane
@@ -239,7 +253,9 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   synth.unlock(); // browsers keep sound off until a key press or a click
   synth.load?.();
-  if (e.code === "KeyF") {
+  if (e.code === "KeyG") toggleTrackTest();
+  else if (trackTest && e.code !== "KeyF") { if (e.code === "Escape") trackTest.close(); } // the test has the floor: only F and Esc work
+  else if (e.code === "KeyF") {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen();
   } else if (e.code === "KeyP") apply({ type: snap.status === "paused" ? "resume" : "pause" }, true);
@@ -275,6 +291,7 @@ if (feetSource instanceof Error) {
     }
     findAddress();
     nameStop();
+    if (params.get("test") === "1") toggleTrackTest();
     frame();
   }).catch((err) => {
     document.getElementById("app").innerHTML = `<p class="error">Could not start the game: ${err.message}</p>`;

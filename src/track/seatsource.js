@@ -58,6 +58,15 @@ export function tappedX({ spotId, foot }, feet, lanes = {}, drop = () => 0) {
   return mine.reduce((best, f) => (best === null || drop(f) > drop(best) ? f : best), null)?.x ?? null;
 }
 
+// What the last bySpot frame saw and decided, for the tracking test (stage/tracktest.js): `read` is the feet as the tracker
+// gave them, `debug` and `taps` come from the tap detector, `poses` are the seats' results, and `lifted` is
+// { [spotId]: true when any of that seat's feet is in the air }, with an entry for every seat.
+export function frameReadout(t, read, feet, debug, taps, poses) {
+  const lifted = Object.fromEntries(poses.map((p) => [p.spotId, false]));
+  for (const f of feet) if (f.lifted) lifted[f.spotId] = true;
+  return { t, read, debug, taps, poses, lifted };
+}
+
 // Where the floor draws a foot glow: in the pad's lane, for each foot that is down.
 export function glowFeet(layout, byPad) {
   return layout.spots.flatMap(({ id, rect }) => (byPad[id] ?? []).filter((f) => !f.lifted).map((f) => ({ u: rect.u + f.u * rect.w, v: rect.v + f.v * rect.h })));
@@ -99,6 +108,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   let fitted = !!saved(slicesKey(layout.spots.length)); // lines for this many seats were fitted, dragged or saved before
   let held = false; // following is off for this session only (a line was dragged)
   let lastFollow = 0;
+  let latest = null; // the last bySpot frame's read-out (lastFrame)
   const heights = new Map(); // `${spotId}:${foot}` -> [{ t, y }] for the last HEIGHT_MS: how far a foot has just come down (tappedX)
   const drop = (f) => { const h = heights.get(`${f.spotId}:${f.foot}`); return h ? f.y - Math.min(...h.map((p) => p.y)) : 0; };
 
@@ -200,11 +210,16 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
         const key = `${f.spotId}:${f.foot}`;
         heights.set(key, [...(heights.get(key) ?? []).filter((p) => now - p.t < HEIGHT_MS), { t: now, y: f.y }]);
       }
-      const { feet, taps: tapped } = taps.update(now, read, lanes);
+      const { feet, taps: tapped, debug } = taps.update(now, read, lanes);
       follow(now);
-      for (const t of tapped) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs, x: tappedX(t, read, lanes, drop) };
+      const fired = tapped.map((t) => ({ ...t, x: tappedX(t, read, lanes, drop) }));
+      for (const t of fired) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs, x: t.x };
+      latest = frameReadout(now, read, feet, debug, fired, seats?.poses() ?? []);
       return padFeet(feet, spotIds, swap, lanes);
     },
+    // The last bySpot frame's read-out (null before the first), for the tracking test. Read it in the same tick as bySpot.
+    lastFrame: () => latest,
+    model,
 
     // What setup needs. None of it runs the tracker: it reads what the stage's own frames already found.
     video, // the picture the tracker reads (setup shows it with a second one, and never moves this one); none for a recording
