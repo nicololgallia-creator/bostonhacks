@@ -1,4 +1,4 @@
-# T Tiles: 3-minute pitch
+# TTiles: 3-minute pitch
 
 BostonHacks · Transit Gamification. Nicolo and Zohayb Riaz.
 
@@ -21,9 +21,9 @@ Speaker times add up to 3:00.
 
 ## 1. Cover (0:10)
 
-**On screen:** T Tiles. Piano tiles on the floor of your train car. Your feet are the fingers.
+**On screen:** TTiles. Piano tiles on the floor of your train car. Your feet are the fingers.
 
-**Say:** Hi, we're Nicolo and Zohayb, and this is T Tiles: piano tiles projected on the floor of a train car, where your feet are the fingers.
+**Say:** Hi, we're Nicolo and Zohayb, and this is TTiles: piano tiles projected on the floor of a train car, where your feet are the fingers.
 
 ## 2. The problem (0:20)
 
@@ -44,7 +44,7 @@ Source: Boston Globe, 19 Nov 2026 (all modes, October average weekday).
 
 ## 4. Our solution (0:25)
 
-**On screen:** T Tiles turns the train floor into a rhythm game. A projector puts a lane of tiles at each rider's feet. When a tile hits the line, lift a foot and land it on the beat, and the piano plays the note. Up to four riders play one song together, right from their seats. Your phone is the remote. No app, no controller.
+**On screen:** TTiles turns the train floor into a rhythm game. A projector puts a lane of tiles at each rider's feet. When a tile hits the line, lift a foot and land it on the beat, and the piano plays the note. Up to four riders play one song together, right from their seats. Your phone is the remote. No app, no controller.
 
 **Say:** Think piano tiles, but the screen is the train floor and your feet are the fingers. A projector across the aisle puts a lane of tiles in front of each seat. One camera watches your shoes. Lift a foot, land it on the beat, and the note plays. Up to four riders play one song together, sitting down. The phone is just the remote.
 
@@ -109,4 +109,4 @@ Taps measured on recordings from our camera, not yet on a live train. Sources: `
 
 **On screen:** Where your stop comes too soon. Next stop: a pilot on a real Green Line car.
 
-**Say:** Next, we want to try it on a real Green Line car. This is T Tiles, where your stop comes too soon. Thank you!
+**Say:** Next, we want to try it on a real Green Line car. This is TTiles, where your stop comes too soon. Thank you!

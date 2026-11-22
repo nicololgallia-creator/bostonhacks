@@ -32,7 +32,7 @@ Everything that goes on the Devpost page, in one place. Fill in each `TODO`, the
 
 ## Basics
 
-- **Project name:** Platform Piano (working name). TODO: final name.
+- **Project name:** TTiles
   - Ideas so far: Treble on the Tracks, T-Minus, Hold Music, Seat Music, Sole Train, Bach Bay, Signal Problems, Fare Play.
 - **Team name:** TODO
 - **Members:**
@@ -70,7 +70,7 @@ Devpost gives these headings. Every number here comes from `research.md` or a re
 Waiting for the T is the part of the ride people dread. On 28 January 2026 the Red Line had 9 trains in service, against 20 in a typical rush hour (Streetsblog Mass). Research on waiting says a wait with something to do, and a wait with a known end, both feel shorter. We wanted to give riders both.
 
 ### What it does
-Platform Piano projects a rhythm game onto the floor of a train car or platform. Tiles slide toward your feet and you tap them with your shoes to play the notes. Scan the QR code, pick your line and your seats on your phone, and pick music. "Fit my train" reads live MBTA arrival times and picks songs that end as your train pulls in. Everyone nearby plays one song together, so a stranger who joins makes the song fuller.
+TTiles projects a rhythm game onto the floor of a train car or platform. Tiles slide toward your feet and you tap them with your shoes to play the notes. Scan the QR code, pick your line and your seats on your phone, and pick music. "Fit my train" reads live MBTA arrival times and picks songs that end as your train pulls in. Everyone nearby plays one song together, so a stranger who joins makes the song fuller.
 
 ### How we built it
 - A web app built with Vite and plain JavaScript. The laptop runs the projected stage, and each phone is a remote.

@@ -26,12 +26,12 @@ Lucid's shape, cut from 100 seconds to 60. Voice-over throughout.
 | # | Time | On screen | Voice |
 |---|---|---|---|
 | 1 | 0:00 to 0:06 | White screen, black words, one sentence at a time. | "Every weekday, people take over a million trips on the T. Most are just time to get through." |
-| 2 | 0:06 to 0:12 | Our own photo of riders on a Green Line car, heads down. Then the name. | "[One true line about our own ride.] So we built Platform Piano." |
+| 2 | 0:06 to 0:12 | Our own photo of riders on a Green Line car, heads down. Then the name. | "[One true line about our own ride.] So we built TTiles." |
 | 3 | 0:12 to 0:22 | The poster and its QR code in a car. The phone: "Where are you getting off?" | "Think piano tiles, but the screen is the train floor and your feet are the fingers. Scan the poster in your car, pick your stop, and sit down." |
 | 4 | 0:22 to 0:36 | A photo of the real setup (projector, camera on the small tripod, laptop) with arrows and labels drawn on. Then the camera view with dots on feet. | "A projector puts a lane of tiles at each player's feet. One camera across the aisle watches your shoes. Lift a foot, land it on the beat, and the note plays. Up to four riders play one song together." |
 | 5 | 0:36 to 0:46 | The phone showing live trains and the recommended song with its seconds. | "The song isn't random. We read the T's live arrival data and pick one that ends as your train reaches your stop." |
 | 6 | 0:46 to 0:55 | Real feet playing on the floor. Four seconds with no voice, so the song is heard. Then the leaderboard. | "Then the floor shows who won." |
-| 7 | 0:55 to 1:00 | Title card: the name over the lit floor. | "This is Platform Piano, where your stop comes too soon." |
+| 7 | 0:55 to 1:00 | Title card: the name over the lit floor. | "This is TTiles, where your stop comes too soon." |
 
 ## Before recording
 
@@ -39,5 +39,5 @@ Lucid's shape, cut from 100 seconds to 60. Voice-over throughout.
 - **"Most are just time to get through" is a judgement, not a fact.** If the platform count from issue 4 gets done, say the count instead ("On one platform we counted __ of __ riders on a phone").
 - **Shot 2 needs a true line from one of us.** It is left open on purpose. Do not make one up.
 - **Shots 3 to 6 follow `PLAN.md` as it stood on Saturday evening** (the poster flow, seated tracking, the leaderboard). Cut any line whose feature is not working when the video is filmed.
-- **The name.** `PLAN.md` says Platform Piano, but the game now lives in the train car. Agree on the name before the title card is made.
+- **The name.** Settled on Sat 21 Nov, 9:15 PM: TTiles, one word.
 - **Sound.** The song in shot 6 must be one we are allowed to publish, since the video is public.

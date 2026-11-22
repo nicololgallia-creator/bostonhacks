@@ -1,4 +1,4 @@
-# Design: Platform Piano remote
+# Design: TTiles remote
 
 Owner: the designer. Values live in `src/tokens.css`; components in `src/phone/phone.css`, `map.css`, `ride.css`, `play.css` and `settings.css`. Use only what is named here. Written Sat 21 Nov 2026 for the pilot screen; updated at 2:50 PM for the wave 3 remote (where you are, seats, music, results). Every later phone card matches it.
 

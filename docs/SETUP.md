@@ -1,4 +1,4 @@
-# Setting up Platform Piano
+# Setting up TTiles
 
 Written Sat 21 Nov 2026 from the code and the reports as they are now. Follow it top to bottom. Read it on a phone if you like: every step is one action.
 
