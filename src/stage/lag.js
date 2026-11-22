@@ -25,6 +25,9 @@ export function measureLag(beatTimes, arrivalTimes) {
   return { offsetMs: Math.round(Math.min(MAX_OFFSET_MS, Math.max(0, median)) / 10) * 10, used: late.length };
 }
 
+// The lag a floor saved after its last Lag test (what was read from storage): a number from 0 to 1000, else null and the default stands.
+export const savedLag = (value) => (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1000 ? value : null);
+
 // Turns "how many feet are in the square now" into "a foot has just arrived". A foot counts as gone only after
 // 150 ms without it, so a tracker that drops a foot for a frame does not make a second arrival.
 export function createArrivals(goneMs = 150) {

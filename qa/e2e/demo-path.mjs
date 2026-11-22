@@ -51,7 +51,10 @@ function openSpy() {
 async function newPage(browser, who, viewport) {
   const page = await (await browser.createBrowserContext()).newPage(); // its own context: its own storage and its own phone id
   await page.setViewport(viewport);
-  page.on("console", (m) => { if (m.type() === "error") t.errors.push(`${who}: ${m.text()}`); });
+  // A page opens all three public relay brokers at once, and the browser itself logs one that cannot be reached (a blocked
+  // network, a flaky DNS). That is expected and harmless while another broker is up, so it is not counted as an error.
+  const brokerDown = (s) => /^WebSocket connection to 'wss:\/\/(broker\.emqx\.io|test\.mosquitto\.org|broker\.hivemq\.com)[:/]/.test(s);
+  page.on("console", (m) => { if (m.type() === "error" && !brokerDown(m.text())) t.errors.push(`${who}: ${m.text()}`); });
   page.on("pageerror", (e) => t.errors.push(`${who} (page error): ${e.message}`));
   return page;
 }

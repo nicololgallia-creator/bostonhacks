@@ -62,7 +62,7 @@ The pads start in four default places. The game can move them to each player's f
 
 If no tap is read in 20 seconds, the panel says so and nothing changes. Press **M** and try again. Tap with the foot clearly in the camera's view.
 
-The lines that cut the camera picture into one slice for each seat fit themselves the first time the game sees the players. Sit in view, with legs showing. **(not yet proven on the real floor)**
+The lines that cut the camera picture into one slice for each seat only move when you fit them or drag them. Have the players sit in view with legs showing, press **Calibrate**, go to **Seats in the camera** and press **Fit to the people**. **(not yet proven on the real floor)**
 
 ## How people join
 

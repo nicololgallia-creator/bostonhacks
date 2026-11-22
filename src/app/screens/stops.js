@@ -1,6 +1,7 @@
 // Screen 2: "Where are you getting off?" The stops ahead on this train, live from the MBTA, as a piece of a transit map.
 import { stopsOnRoute } from "../../mbta/api.js";
 import { h, svg, CHECK, plural, button, trainCar, mascotMount, skeleton, failure, rest, sleep } from "../parts.js";
+import { noTimes } from "./songs.js";
 
 export default {
   id: "stops",
@@ -14,7 +15,7 @@ export default {
       body.replaceChildren(skeleton(5));
       app.memo(`stops:${app.train.line}:${app.train.directionId}`, () => stopsOnRoute(app.train.line, app.train.directionId)).then(
         (stops) => { if (el.isConnected) { showStops(app, el, head, body, stops, load); rest(); } },
-        (e) => { if (el.isConnected) body.replaceChildren(failure(e.message, load)); },
+        (e) => { if (el.isConnected) body.replaceChildren(failure(e.message, load, noTimes(app))); },
       );
     };
     load();

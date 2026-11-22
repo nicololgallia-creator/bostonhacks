@@ -52,7 +52,7 @@ export default {
       pending = true;
       setTimeout(() => { pending = false; if (el.isConnected) paint(app.state); }, READY_WAIT_MS);
       app.send({ type: "join" });
-      app.send({ type: "start", mode: app.state?.mode ?? "team", songIds: [song.id], transit: { stop: stop.name, mode: "train", endsAt: Date.now() + Math.round(ride.seconds * 1000) } });
+      app.send({ type: "start", mode: app.state?.mode ?? "team", songIds: [song.id], transit: ride && stop ? { stop: stop.name, mode: "train", endsAt: Date.now() + Math.round(ride.seconds * 1000) } : null }); // no ride loaded: no stop and no time are claimed
       paint(app.state);
     }
     function tap(spotId) {

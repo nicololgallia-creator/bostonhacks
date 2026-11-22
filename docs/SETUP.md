@@ -70,11 +70,11 @@ Press **C** on the stage. Setup shows one step at a time, in a small panel in a 
 Notes for the steps:
 
 - **Step 2, facing.** The projector stands across from the players, so the picture is turned half way round and the seats mirror. The switch is saved. Key **T** on the stage does the same and reloads the page. This is a rule from Nicolo, Sat 6:25 PM. After you turn it, check that the seat numbers on the floor read left to right as the players see them.
-- **Step 4, fit.** The button finds everyone and cuts the camera picture into one slice for each seat. It takes about 1 to 3 seconds. After that the lines follow the people slowly by themselves. Dragging a line turns following off until you press **Follow people**. Press the fit button in setup, never in the middle of a song.
+- **Step 4, fit.** The button finds everyone and cuts the camera picture into one slice for each seat. It takes about 1 to 3 seconds. After that the lines stay where they are. **Follow people** is off until you press it; with it on, the lines follow the people slowly in the lobby. Dragging a line turns following off until you press **Follow people** again. Press the fit button in setup, never in the middle of a song.
 - **Step 4, a neighbour.** If a row says "Someone from a neighbouring seat shows here. Move the line off them.", drag that line.
 - **Step 5, one player alone.** You get two lanes, "Left foot" and "Right foot". If the wrong lane flashes, press **Swap feet**. A camera that faces the player sees the left foot on the picture's right, so you will probably need it.
 - **Step 5, two or more players.** Each player has one lane. If another player's lane flashed, press **Another player's lane flashed**, then go back to step 4 and fix the lines.
-- **Step 6, lag.** The game starts with 120 ms. The test replaces it with your number.
+- **Step 6, lag.** The game starts with 120 ms. The test replaces it with your number, and the floor keeps it after a reload.
 
 Everything is saved on the laptop. If the camera or the projector gets bumped, press **C** and redo steps 2 to 4.
 

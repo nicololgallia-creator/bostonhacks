@@ -790,7 +790,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     let note = ""; // a line under the picture about the last fit, or about following
     let alive = true;
 
-    // Fit to the people: finds everyone in the picture once and puts each player in their own slice. Following keeps them there.
+    // Fit to the people: finds everyone in the picture once and puts each player in their own slice. With Follow people on (it starts off), they keep following.
     const fitBtn = fixed ? null : button("Fit to the people", "is-primary", () => runFit());
     const followBtn = fixed ? null : button("Follow people", "", () => { feet.setFollow(!feet.following()); note = ""; });
     const runFit = async () => {

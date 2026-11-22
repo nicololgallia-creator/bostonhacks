@@ -4,6 +4,7 @@
 // game reaches a status while this phone holds a seat: a later screen (leaderboard, share, play again) replaces a value here.
 import stops from "./stops.js";
 import song from "./song.js";
+import songs from "./songs.js";
 import seats from "./seats.js";
 import look from "./look.js";
 import board from "./board.js";
@@ -11,7 +12,7 @@ import share from "./share.js";
 import again from "./again.js";
 import scan from "./scan.js";
 
-export const SCREENS = [stops, song, seats, look, board, share, again, scan];
+export const SCREENS = [stops, song, songs, seats, look, board, share, again, scan];
 export const FIRST = "stops"; // where the flow starts
 export const LANDING = "scan"; // where an app opened with no room and no train starts: the code reader
 // A screen with `lands: true` (the leaderboard) joins the flow when a game puts the person there; see wanted() in main.js.

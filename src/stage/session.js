@@ -188,7 +188,7 @@ export function createSession({ songs, layout, train } = {}) {
     songLanes = lanesInPad(seated.length);
     engines = new Map(seated.map((spotId, i) => {
       const game = createGame({ song: parts[i], lanes: songLanes });
-      const warmth = warm ? { tapAtMs: [], seen: [], level: null } : null;
+      const warmth = warm ? { tapAtMs: [], seen: [], level: null, sawFoot: false } : null;
       return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false, bonus: 0, bonusFor: null, warm: warmth }];
     }));
     if (!warm) return beginCountdown(nowMs);
@@ -214,6 +214,7 @@ export function createSession({ songs, layout, train } = {}) {
   function noteTap(spotId, e, nowMs, feet) {
     const w = e.warm;
     const standing = Array.isArray(feet) ? feet.filter((f) => f && !f.lifted).length : 0;
+    if (Array.isArray(feet) && feet.length) w.sawFoot = true; // any foot at all, standing or lifted: someone is sitting at this seat
     w.seen = w.seen.filter((s) => nowMs - s.t <= FLICKER_MS);
     w.seen.push({ t: nowMs, n: standing });
     const level = Math.max(...w.seen.map((s) => s.n));
@@ -229,9 +230,14 @@ export function createSession({ songs, layout, train } = {}) {
     if (!unready.length) return endWarmup(nowMs);
     if (nowMs - warmAt < WARM_MAX_MS) return;
     // Out of time: the seats that never got ready play anyway, and their phones are told why. One phone gets its own
-    // notice; with several phones the single notice slot is for everyone.
-    const phoneIds = [...new Set(unready.map(([spotId]) => owner.get(spotId)))];
-    refuse("The floor did not see your taps. Lift your foot higher.", phoneIds.length === 1 ? phoneIds[0] : null, nowMs);
+    // notice; with several phones the single notice slot is for everyone. A seat that never saw a foot has nobody sitting
+    // where its camera slice looks, which lifting higher cannot fix: that sentence wins, names those seats, and goes to their phones.
+    const nobody = unready.filter(([, e]) => !e.warm.sawFoot).map(([spotId]) => spotId);
+    const phoneIds = [...new Set((nobody.length ? unready.filter(([spotId]) => nobody.includes(spotId)) : unready).map(([spotId]) => owner.get(spotId)))];
+    const text = !nobody.length ? "The floor did not see your taps. Lift your foot higher."
+      : nobody.length === 1 ? `The camera sees nobody at seat ${nobody[0]}. Sit at pad ${nobody[0]}, or pick the seat you are sitting at.`
+      : `The camera sees nobody at seats ${nobody.slice(0, -1).join(", ")} and ${nobody.at(-1)}. Sit at those pads, or pick the seats you are sitting at.`;
+    refuse(text, phoneIds.length === 1 ? phoneIds[0] : null, nowMs);
     endWarmup(nowMs);
   }
 
@@ -401,9 +407,10 @@ export function createSession({ songs, layout, train } = {}) {
         status,
         mode: status === "lobby" ? chosen : songMode, // a song that runs as team (one seat) says team
         winner: winner(),
+        // players[seat]: taps, ready, tapAtMs, and seen (true once any foot, standing or lifted, was seen at the seat in this warm-up)
         warmup: !warming() ? null : {
           need: WARM_TAPS, beatMs: WARM_BEAT_MS, maxMs: WARM_MAX_MS, startedAtMs: warmAt,
-          players: Object.fromEntries([...engines].map(([spotId, e]) => [spotId, { taps: e.warm.tapAtMs.length, ready: e.warm.tapAtMs.length >= WARM_TAPS, tapAtMs: e.warm.tapAtMs }])),
+          players: Object.fromEntries([...engines].map(([spotId, e]) => [spotId, { taps: e.warm.tapAtMs.length, ready: e.warm.tapAtMs.length >= WARM_TAPS, tapAtMs: e.warm.tapAtMs, seen: e.warm.sawFoot }])),
         },
         notice: notice && nowMs - noticeAt < NOTICE_MS ? notice : null,
         layout: { ...lay, lanes: padLanes() },

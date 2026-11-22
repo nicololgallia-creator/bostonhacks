@@ -16,13 +16,15 @@ import { backingLeft } from "../game/chart.js";
 import { createRenderer } from "../game/render.js";
 import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
-import { openLink, joinHref, stageRoom, onLaptopNetwork } from "../link.js";
+import { openLink, joinHref, stageRoom } from "../link.js";
+import { asksLan, joinBase } from "./address.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
 import { listStops } from "../mbta/api.js";
 import { feetBySpot, makeLayout, keptLayout } from "./layout.js"; // keptLayout: wave 9 block "seats"
 import { applyKeystone } from "./keystone.js";
 import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
+import { savedLag } from "./lag.js";
 import { createFollower } from "./autoplace.js"; // autoplace block below
 import { openTrackTest, sayNeedsSeats } from "./tracktest.js"; // tracktest block below
 import "./install.css"; // install blocks below
@@ -31,6 +33,7 @@ import { installOn, defaultFacing, createStrip, stripFor, cameraOf, RETRY_MS } f
 const LAYOUT_KEY = "pp:layout";
 const TRAIN_KEY = "pp:train"; // the train this floor is in: line, direction, stop, car
 const PLAYERS_KEY = "pp:players"; // who is seated where, so a reloaded stage keeps everyone
+const LAG_KEY = "pp:lag"; // the lag (ms) the last Lag test measured
 const DEMO_SONGS = ["twinkle", "greensleeves"];
 
 const params = new URLSearchParams(location.search);
@@ -68,6 +71,8 @@ function saved(key) {
 const seatsParam = Number(params.get("seats"));
 // ---- wave 9, seats: four seats in a row by default (session.js). ?seats=N and pads moved in setup still win; the 3 even pads an older stage saved on every run are dropped (keptLayout). ----
 const session = createSession({ songs, layout: seatsParam >= 1 && seatsParam <= 4 ? makeLayout({ seats: seatsParam }) : keptLayout(saved(LAYOUT_KEY)), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
+const lagFromTest = savedLag(saved(LAG_KEY)); // the lag from the last Lag test: a reload keeps it
+if (lagFromTest !== null) session.apply({ type: "set", offsetMs: lagFromTest }, 0, { stage: true });
 const synth = createSynth();
 window.synth = synth; // AUDIO (music): scripted checks read synth.locked() and synth.scheduled() (tools/music-check.mjs)
 if (install) { synth.unlock(); synth.load?.(); } // install: no key press. start-ttiles.cmd starts the browser with its autoplay rule off, so this opens the sound.
@@ -90,7 +95,7 @@ session.restore(before?.players, clock(), before?.live === true);
 // The link: every message from a phone goes to the session, and the phones get the State back.
 const link = openLink((message) => apply(message), () => {}, (up) => {
   relayUp = up; // the QR code's address depends on it
-  if (lanUrl || usePublic()) drawQr();
+  if (joinAddress()) drawQr();
   else { qr = null; delete canvas.dataset.joinUrl; }
 });
 const LIVE = ["warmup", "countdown", "playing", "paused"]; // wave 9: the warm-up is part of a song
@@ -119,20 +124,21 @@ setInterval(sendState, 500);
 // Otherwise it holds the laptop's address, which works on the same Wi-Fi with no internet.
 // A floor opened on our own public address (ttiles.us/floor) is its own phone address: no setting is needed there, which
 // matters because the site is also built by Vercel straight from GitHub, where no local setting exists.
-const PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL || (onLaptopNetwork(location.hostname) ? "" : location.origin);
+// The choice is joinBase (address.js). A public floor never asks /lan, which only the laptop's own server answers.
 let lanUrl = null;
 let relayUp = false;
-const usePublic = () => PUBLIC_URL !== "" && relayUp;
+const joinAddress = () => joinBase({ hostname: location.hostname, envUrl: import.meta.env.VITE_PUBLIC_URL || "", origin: location.origin, relayUp, lanUrl });
 function drawQr() {
-  const href = joinHref(usePublic() ? PUBLIC_URL : lanUrl, stageRoom(), trainQuery(snap.train));
+  const href = joinHref(joinAddress(), stageRoom(), trainQuery(snap.train));
   qr = createQr(href, { errorCorrectionLevel: "M" }).modules;
   canvas.dataset.joinUrl = href; // for checks: the address the QR code holds
 }
 async function findAddress() {
+  if (!asksLan(location.hostname)) return drawQr();
   try {
     const { urls } = await (await fetch("/lan")).json();
     lanUrl = urls[0] ?? null;
-    if (lanUrl || usePublic()) return drawQr();
+    if (joinAddress()) return drawQr();
     qr = null;
     qrNote = ["No Wi-Fi found.", "Join Wi-Fi or a hotspot."];
   } catch {
@@ -204,7 +210,10 @@ function setup(first) { // first: "seats" opens on the seats step with "Place by
     // The seated source gets the same layout, so its slices follow the seats at once.
     setLayout: (layout) => { const ok = session.setLayout(layout); if (ok) feetSource.setLayout?.(layout); publish(); return ok; },
     isPlaying: () => LIVE.includes(snap.status), // so setup can drop a "song is playing" refusal when the song ends
-    setOffset: (ms) => apply({ type: "set", offsetMs: ms }, true),
+    setOffset: (ms) => {
+      try { localStorage.setItem(LAG_KEY, JSON.stringify(ms)); } catch { /* storage is full or blocked: the lag lasts until the reload */ }
+      apply({ type: "set", offsetMs: ms }, true);
+    },
     onClose: () => { setupHandle = null; applyKeystone(canvas); tellReady(); },
   }) ?? setupHandle; // already open: keep the handle we have
 }
@@ -364,13 +373,6 @@ async function keepCamera() {
     await new Promise((done) => setTimeout(done, RETRY_MS));
   }
 }
-// The seat lines fit themselves: with none saved and following on, look for the people in the lobby until they are found (setup's "Fit to the people").
-let fitting = false;
-function keepFit() {
-  if (fitting || snap.status !== "lobby" || setupHandle || !feetSource.ready().camera || !feetSource.needsFit?.() || !feetSource.following()) return;
-  fitting = true;
-  feetSource.fit().catch(() => {}).finally(() => { fitting = false; });
-}
 // ---- end install ----
 
 // ---- operator buttons: three small buttons in the lobby for whoever runs the floor, so nobody needs to know a key.
@@ -402,7 +404,6 @@ if (feetSource instanceof Error) {
 } else if (install && feetSource.raw) {
   try { boot(); } catch (err) { showFailure(err); }
   keepCamera();
-  setInterval(keepFit, 4000);
 } else {
   // A camera that will not start opens setup, whose first step says why. Any other failure stops the stage.
   // Only a source with a camera picture (the camera map, or the seats) opens setup; its first step shows the reason and a camera picker.

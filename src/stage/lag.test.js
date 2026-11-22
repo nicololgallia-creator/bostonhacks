@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { measureLag, createArrivals } from "./lag.js";
+import { measureLag, createArrivals, savedLag } from "./lag.js";
+
+test("a saved lag is used only when it is a number from 0 to 1000", () => {
+  assert.equal(savedLag(180), 180);
+  assert.equal(savedLag(0), 0);
+  assert.equal(savedLag(1000), 1000);
+  for (const bad of ["180", NaN, Infinity, -5, 5000, null, undefined, {}, [180]]) assert.equal(savedLag(bad), null, String(bad));
+});
 
 const beats = Array.from({ length: 8 }, (_, i) => 1000 + i * 600);
 const steps = (lateness) => beats.map((b, i) => b + lateness[i]);

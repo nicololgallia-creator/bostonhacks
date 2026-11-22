@@ -9,7 +9,7 @@ import { EDGES_KEY, boundsFor, slicesKey, writeSaved, assignHips, fitBounds, eas
 import { pickInstallCamera } from "../stage/install.js";
 
 export const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html and in setup
-export const FOLLOW_KEY = "seats:follow"; // false when the operator turned following off
+export const FOLLOW_KEY = "seats:follow"; // true when the operator turned following on in setup; off when nothing is saved
 const FOLLOW_EVERY_MS = 100; // how often following looks at the hips: the saved dividers are written at most this often
 const FOLLOW_MAX_DT = 500; // a long gap (a hidden tab) moves the dividers no further than this long a gap would
 const HEIGHT_MS = 500; // a tap in a one-lane pad is the foot that came down furthest in this long (a guess)
@@ -202,7 +202,8 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     slices.forEach((s, i) => { s.x0 = bounds[i]; s.x1 = bounds[i + 1]; });
     if (save) writeSaved(bounds);
   };
-  const following = () => !replay && !held && saved(FOLLOW_KEY) !== false;
+  // Following is off unless the operator turns it on in setup (Follow people). The lines move only on Fit to the people or a drag.
+  const following = () => !replay && !held && saved(FOLLOW_KEY) === true;
 
   // Each seat's own hips pull its dividers toward the fit, slowly (slices.js). A pose dropped as a neighbour's has someone else's hips, so it does not count.
   function follow(now) {
@@ -382,7 +383,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       if (r.hips.length) { fitted = true; apply(bounds); }
       return { bounds, found: r.hips.length, hips, ms: r.ms, method: r.method };
     },
-    // Following: each seat's hips keep nudging the lines (see follow above). It is on unless the operator turned it off (saved) or dragged a line (this session).
+    // Following: each seat's hips keep nudging the lines (see follow above). It is off until the operator turns it on (saved), and off again after a drag (this session).
     following,
     setFollow(on, remember = true) {
       held = !on && !remember;

@@ -153,7 +153,7 @@ function showBanner() {
   let text = "";
   if (active?.id === LANDING) text = ""; // the code reader comes before any floor is known
   else if (!linkUp) { if (Date.now() - downSince > 1500) text = "Lost the connection to the floor. Trying again."; }
-  else if (!floorOn()) { if (app.floorGone()) text = "No floor is connected. You can still look at stops and songs."; }
+  else if (!floorOn()) { if (app.floorGone()) text = "No floor is connected. Check the code on the floor."; }
   else text = noticeText();
   if (text) status.firstElementChild.textContent = text;
   status.toggleAttribute("data-show", Boolean(text));

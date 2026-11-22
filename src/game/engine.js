@@ -14,8 +14,9 @@ const HOLD_POINTS_PER_BEAT = 20;
 
 // A note is a hold when it says so (`hold: true|false`), else when it is long enough.
 export const isHold = (note, bpm) => note.hold ?? (note.beats * 60000) / bpm >= HOLD_MS;
-// What one judged tile adds to the score, with the combo it has just made.
-const pointsFor = (grade, extra, combo) => (POINTS[grade] + extra) * multiplierFor(combo);
+// What one judged tile adds to the score, with the combo it has just made. Whole points: a hold's length in beats is
+// not a whole number (London Bridge has holds of 3.0083 beats), and every screen shows the score as one whole number.
+const pointsFor = (grade, extra, combo) => Math.round((POINTS[grade] + extra) * multiplierFor(combo));
 
 // The score of a perfect run through a part ({ bpm, notes }): every tile perfect, holds kept to the end, no miss.
 export function maxScore({ bpm, notes }) {

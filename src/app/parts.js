@@ -94,7 +94,9 @@ export function skeleton(count, style = "") {
   return h("div", "sk-list", ...Array.from({ length: count }, (_, i) => Object.assign(h("div", "sk"), { style: `--i:${i};${style}` })));
 }
 
-// A load that failed: the real reason, and a button that tries again.
-export function failure(message, retry, label = "Try again") {
-  return h("div", "notice", h("h2", "", "That did not load."), h("p", "", message), button("btn", retry, label));
+// A load that failed: the real reason, and a button that tries again. `way` is an optional second, quieter way on:
+// { label, run }, shown under "Try again" so a failed load is never a dead end.
+export function failure(message, retry, way) {
+  return h("div", "notice", h("h2", "", "That did not load."), h("p", "", message), button("btn", retry, "Try again"),
+    ...(way ? [button("btn ghost", way.run, way.label)] : []));
 }

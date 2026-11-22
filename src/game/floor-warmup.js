@@ -1,7 +1,8 @@
 // The warm-up, before the first 3, 2, 1: every taken seat taps its foot a few times so the floor knows that player's foot.
 // One instruction across the top, and a thin bar for the time left. At each taken seat's pad: dots that fill as that
 // player's taps arrive, and when they are all in a tick, with the seat's colour flooding the pad. The foot zone flashes
-// on every beat so people tap together. A seat that is not ready near the end is told to lift its foot higher.
+// on every beat so people tap together. A seat that is not ready near the end is told to lift its foot higher;
+// one that has seen no foot at all after 3 seconds is told nobody is there.
 // Seats nobody took are not drawn. Every repeating motion here is the one beat; nothing else moves on its own.
 import { INK, WHITE, seatOf, clamp01, easeOut, backOut, spring } from "./floor-look.js";
 import { drawLaneZone, drawBadge, laneGap, litLanes, HUD_BOTTOM } from "./floor-screens.js";
@@ -10,6 +11,7 @@ import { HIT_V } from "./engine.js";
 const SEATS = 8;
 const FLOOD_MS = 260;
 const HINT_MS = 6000; // a seat that is still not ready this close to the end is told to lift its foot higher
+const NOBODY_MS = 3000; // a seat that has seen no foot at all after this long is told nobody is there (session's `seen`)
 
 export function createWarmup(kit) {
   const { ctx } = kit;
@@ -102,12 +104,13 @@ export function createWarmup(kit) {
 
     if (mine.ready) {
       drawTick(cx, top + laneH * 0.3, H * 0.19 * backOut((now - readyAt[s]) / 400), ink);
-    } else if (elapsed >= w.maxMs - HINT_MS) {
+    } else if (elapsed >= w.maxMs - HINT_MS || (mine.seen === false && elapsed >= NOBODY_MS)) {
+      const nobody = mine.seen === false; // no foot seen here yet: lifting higher cannot help
       const hw = pw - 20 * U;
       const hh = H * 0.19;
       kit.plate(cx - hw / 2, top + laneH * 0.3 - hh / 2, hw, hh, 20 * U, WHITE);
-      kit.text("Lift your", cx, top + laneH * 0.3 - H * 0.04, H * 0.055, INK, true, "center", hw - 24 * U);
-      kit.text("foot higher", cx, top + laneH * 0.3 + H * 0.04, H * 0.055, INK, true, "center", hw - 24 * U);
+      kit.text(nobody ? "Nobody here" : "Lift your", cx, top + laneH * 0.3 - H * 0.04, H * 0.055, INK, true, "center", hw - 24 * U);
+      kit.text(nobody ? "Sit at this pad" : "foot higher", cx, top + laneH * 0.3 + H * 0.04, H * 0.055, INK, true, "center", hw - 24 * U);
     }
 
     // The floor sees each foot that is down: a ring in the seat's colour, where the foot is.

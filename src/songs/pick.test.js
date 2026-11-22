@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickSongs } from "./pick.js";
+import { pickSongs, APPROVED } from "./pick.js";
 import { songs, songById } from "./index.js";
 import { songSeconds } from "../game/engine.js";
 
@@ -30,9 +30,24 @@ test("a 3 minute wait lands within 20 seconds of the budget", () => {
   assert.ok(r.fits && r.totalSeconds <= 160 && r.totalSeconds >= 140, `got ${r.totalSeconds}`);
 });
 
-test("a 30 minute wait returns every song once", () => {
+test("a 30 minute wait returns every approved song once", () => {
   const r = pickSongs({ seconds: 1800 });
-  assert.deepEqual([...r.songIds].sort(), songs.map((s) => s.id).sort());
+  assert.deepEqual([...r.songIds].sort(), [...APPROVED].sort());
+});
+
+test("the approved list names real songs, eleven of them", () => {
+  assert.equal(APPROVED.length, 11);
+  for (const id of APPROVED) assert.ok(songById(id), id);
+});
+
+test("a recommendation is made of approved songs only, for every ride length on Green B", () => {
+  for (const minutes of [1, 3, 5, 8, 11, 13, 16, 18, 20]) {
+    const r = pickSongs({ seconds: minutes * 60 });
+    console.log(`ride ${String(minutes).padStart(2)} min: ${r.songIds.join(", ") || "(none fits)"}`);
+    assert.ok(r.songIds.every((id) => APPROVED.includes(id)), `${minutes} min: ${r.songIds}`);
+  }
+  // Under 1:00 only the shortest songs fit, and Nicolo's list covers them.
+  assert.equal(pickSongs({ seconds: 60 }).fits, true);
 });
 
 test("the same input gives the same answer, and a buffer of 0 uses the whole wait", () => {

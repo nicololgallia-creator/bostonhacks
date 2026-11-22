@@ -38,7 +38,7 @@ export default {
       if (!app.mine().length) { // the seats were given up: pick them again first, with this song
         const t = kept?.transit;
         if (t) { app.trip.stop = { name: t.stop }; app.trip.ride = { seconds: Math.max(0, Math.round(rideLeft(t))) }; } // the clock keeps running
-        else if (!app.trip.stop || !app.trip.ride) return app.restart();
+        else if (!app.trip.song) return app.restart(); // a trip with a song but no ride is the no-train path: it goes on
         app.trip.song = song;
         return app.go("seats");
       }

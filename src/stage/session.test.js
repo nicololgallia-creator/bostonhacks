@@ -1232,7 +1232,7 @@ test("warm-up: a start from the lobby begins in warmup with the exact warmup blo
   assert.equal(snap.status, "warmup");
   assert.deepEqual(snap.warmup, {
     need: 4, beatMs: 600, maxMs: 15000, startedAtMs: 0,
-    players: { 1: { taps: 0, ready: false, tapAtMs: [] }, 2: { taps: 0, ready: false, tapAtMs: [] } },
+    players: { 1: { taps: 0, ready: false, tapAtMs: [], seen: false }, 2: { taps: 0, ready: false, tapAtMs: [], seen: false } },
   });
   assert.deepEqual([WARM_TAPS, WARM_BEAT_MS, WARM_MAX_MS], [4, 600, 15000]);
   assert.equal(snap.song.id, "tiny");
@@ -1305,7 +1305,7 @@ test("warm-up: it ends and the countdown begins the moment every taken seat has 
   for (let k = 0; k < 3; k++) tapOnce(s, [1, 2], 100 + 600 * k);
   tapOnce(s, [1], 100 + 600 * 3); // seat 1 is ready, seat 2 has 3 taps
   assert.equal(statusOf(s, 2000), "warmup");
-  assert.deepEqual(s.snapshot(2000).warmup.players[1], { taps: 4, ready: true, tapAtMs: [100, 700, 1300, 1900] });
+  assert.deepEqual(s.snapshot(2000).warmup.players[1], { taps: 4, ready: true, tapAtMs: [100, 700, 1300, 1900], seen: true });
   assert.deepEqual([s.snapshot(2000).warmup.players[2].taps, s.snapshot(2000).warmup.players[2].ready], [3, false]);
   const last = 2500;
   const view = s.tick(last, { 2: [{ u: 0.5, v: 0.9 }] }); // seat 2's fourth tap
@@ -1327,15 +1327,66 @@ test("warm-up: after 15 seconds the seats that are not ready play anyway, and th
   const view = s.tick(WARM_MAX_MS, {});
   assert.equal(view.status, "countdown");
   assert.deepEqual(view.pads.map((p) => p.spotId), [1, 2, 3], "all three seats play");
-  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: "ben", text: "The floor did not see your taps. Lift your foot higher." });
+  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: "ben", text: "The camera sees nobody at seats 2 and 3. Sit at those pads, or pick the seats you are sitting at." });
   assert.equal(s.snapshot(WARM_MAX_MS + 4000).notice, null);
+});
+
+// A foot seen at a seat in the warm-up, standing or lifted, without a tap.
+const seeFoot = (s, spotId, t) => { s.tick(t, { [spotId]: [{ u: 0.5, v: 0.9 }] }); s.tick(t + 20, { [spotId]: [{ u: 0.5, v: 0.9 }] }); };
+
+test("warm-up: a seat that never saw a foot is told nobody is there, and the snapshot says seen: false", () => {
+  const s = room({ 1: "ann", 2: "ben" });
+  start(s, ["tiny"]);
+  s.tick(0, {});
+  for (let k = 0; k < 4; k++) tapOnce(s, [1], 100 + 600 * k);
+  assert.deepEqual([s.snapshot(3000).warmup.players[1].seen, s.snapshot(3000).warmup.players[2].seen], [true, false]);
+  assert.equal(s.tick(WARM_MAX_MS, {}).status, "countdown", "the song still starts");
+  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: "ben", text: "The camera sees nobody at seat 2. Sit at pad 2, or pick the seat you are sitting at." });
+});
+
+test("warm-up: a seat that saw feet but made too few taps keeps the lift-your-foot sentence", () => {
+  const s = room({ 1: "ann", 2: "ben" });
+  start(s, ["tiny"]);
+  s.tick(0, {});
+  for (let k = 0; k < 4; k++) tapOnce(s, [1], 100 + 600 * k);
+  seeFoot(s, 2, 5000); // a foot stands there the whole time and never lifts
+  assert.equal(s.snapshot(5100).warmup.players[2].seen, true);
+  s.tick(WARM_MAX_MS, {});
+  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: "ben", text: "The floor did not see your taps. Lift your foot higher." });
+});
+
+test("warm-up: when one seat saw nobody and another saw feet, the nobody sentence wins, names that seat, and goes to its phone", () => {
+  const s = room({ 1: "ann", 2: "ben", 3: "cat" });
+  start(s, ["tiny"]);
+  s.tick(0, {});
+  for (let k = 0; k < 4; k++) tapOnce(s, [1], 100 + 600 * k);
+  seeFoot(s, 2, 5000);
+  s.tick(WARM_MAX_MS, {});
+  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: "cat", text: "The camera sees nobody at seat 3. Sit at pad 3, or pick the seat you are sitting at." });
+});
+
+test("warm-up: a lifted foot counts as seen", () => {
+  const s = room({ 1: "ann" });
+  start(s, ["tiny"]);
+  s.tick(0, {});
+  s.tick(20, { 1: [{ u: 0.5, v: 0.9, lifted: true }] });
+  assert.equal(s.snapshot(20).warmup.players[1].seen, true);
+});
+
+test("warm-up: the fake floor and the mouse (a foot only while pressed) still finish their warm-ups", () => {
+  const s = room({ 1: "ann" });
+  start(s, ["tiny"]);
+  s.tick(0, {}); // the mouse is up: no foot yet
+  for (let k = 0; k < 4; k++) tapOnce(s, [1], 100 + 600 * k); // each click is a foot that comes and goes
+  assert.equal(s.tick(2600, {}).status, "countdown");
+  assert.equal(s.snapshot(2600).notice, null);
 });
 
 test("warm-up: when several phones are not ready the notice is for everyone, and a ready phone gets none", () => {
   const s = room({ 1: "ann", 2: "ben" });
   start(s, ["tiny"]);
   s.tick(WARM_MAX_MS, {});
-  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: null, text: "The floor did not see your taps. Lift your foot higher." });
+  assert.deepEqual(s.snapshot(WARM_MAX_MS).notice, { for: null, text: "The camera sees nobody at seats 1 and 2. Sit at those pads, or pick the seats you are sitting at." });
   const t = room({ 1: "ann", 2: "ben" });
   start(t, ["tiny"]);
   t.tick(0, {});
@@ -1458,7 +1509,7 @@ test("warm-up: a phone that goes quiet keeps its seats, and the last seat leavin
   assert.equal(statusOf(s, WARM_MAX_MS - 20), "warmup");
   assert.deepEqual(seatsOf(s, WARM_MAX_MS - 20), [["ann", 1], ["ben", 2]]);
   s.apply({ type: "leave", clientId: "ben" }, 100);
-  assert.deepEqual(s.snapshot(100).warmup.players, { 1: { taps: 0, ready: false, tapAtMs: [] } });
+  assert.deepEqual(s.snapshot(100).warmup.players, { 1: { taps: 0, ready: false, tapAtMs: [], seen: false } });
   s.apply({ type: "leave", clientId: "ann" }, 120);
   assert.deepEqual([statusOf(s, 120), s.snapshot(120).warmup], ["lobby", null]);
 });

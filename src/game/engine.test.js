@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { splitParts } from "./parts.js";
+import { songById } from "../songs/index.js";
 import { createGame, lanesFor, laneOf, songSeconds, multiplierFor, gradeFor, maxScore, isHold, ZONE_V, HOLD_MS, HOLD_GRACE_MS } from "./engine.js";
 
 const twinkle = JSON.parse(readFileSync(new URL("../../songs/twinkle.json", import.meta.url), "utf8"));
@@ -351,6 +353,19 @@ test("a note is a hold at HOLD_MS or longer, unless it says otherwise; maxScore 
     }
     assert.equal(last.score, maxScore(song), song.id);
   }
+});
+
+test("every score is a whole number, even when a hold is not a whole number of beats", () => {
+  // London Bridge, split for 1 to 4 seats, has holds of 3.0083 beats: the team showed 2,245.167 on the phone.
+  for (const seats of [1, 2, 3, 4]) {
+    for (const part of splitParts(songById("london-bridge"), seats)) assert.ok(Number.isInteger(maxScore(part)), `${seats} seats: ${maxScore(part)}`);
+  }
+  const odd = { id: "odd", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 3.0083333 }, { beat: 5, midi: 64, beats: 0.5 }] };
+  const game = createGame({ song: odd, players: 1 });
+  let last;
+  for (let t = -300; t <= 4000; t += 20) last = game.update(t, t >= 0 && t < 1504 ? [{ u: 0.1, v: 0.9, lifted: false }] : NONE);
+  assert.ok(last.score > 100, "the hold paid its beats");
+  assert.ok(Number.isInteger(last.score), `score ${last.score}`);
 });
 
 test("feet with lifted: false behave exactly like feet with no lifted field", () => {

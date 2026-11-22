@@ -356,6 +356,28 @@ test("setActive: a seat left out shows no feet, makes no taps and its picture co
   }
 });
 
+test("seat lines: a fresh floor has following off, turning it on then off is saved, and a drag holds it off until a reload", () => {
+  const before = { storage: globalThis.localStorage, document: globalThis.document };
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+  globalThis.document = { createElement: () => ({}) }; // the tracker makes one canvas for each seat when built, and runs nothing until started
+  try {
+    const source = createSeatSource({ video: { tagName: "VIDEO" }, layout: makeLayout({ seats: 2 }), replay: null });
+    assert.equal(source.following(), false, "nothing saved: off");
+    source.setFollow(true);
+    assert.deepEqual([source.following(), store.get("seats:follow")], [true, "true"]);
+    source.setFollow(false, false); // a drag: off for this session, the saved choice stays
+    assert.deepEqual([source.following(), store.get("seats:follow")], [false, "true"]);
+    source.setFollow(false);
+    assert.deepEqual([source.following(), store.get("seats:follow")], [false, "false"]);
+    const reloaded = createSeatSource({ video: { tagName: "VIDEO" }, layout: makeLayout({ seats: 2 }), replay: null });
+    assert.equal(reloaded.following(), false);
+  } finally {
+    globalThis.localStorage = before.storage;
+    if (before.document === undefined) delete globalThis.document; else globalThis.document = before.document;
+  }
+});
+
 test("seat lines: they follow people in the lobby and hold still from the warm-up to the results", () => {
   assert.equal(linesMayMove("lobby"), true);
   for (const status of ["warmup", "countdown", "playing", "paused", "results"]) assert.equal(linesMayMove(status), false, status);

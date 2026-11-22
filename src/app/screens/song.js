@@ -1,12 +1,12 @@
-﻿// Screen 3: "Recommended song". One song that fits the ride, shown as a ticket, with "See more songs".
+// Screen 3: "Recommended song". One song that fits the ride, shown as a ticket, with "See more songs".
 // "Play this song" goes on to the seats.
 import { rideSeconds } from "../../mbta/api.js";
 import { pickSongs } from "../../songs/pick.js";
 import { songs, songById } from "../../songs/index.js";
-import { songLevel } from "../../songs/level.js";
 import { songSeconds } from "../../game/engine.js";
 import { fitting } from "../fit.js";
 import { h, svg, PLAY, clock, button, coverTile, mascotMount, skeleton, failure, rest } from "../parts.js";
+import { noTimes, levelBadge, songRow } from "./songs.js";
 
 export default {
   id: "song",
@@ -20,7 +20,7 @@ export default {
       body.replaceChildren(skeleton(2, "margin-left:0;height:8rem"));
       app.memo(`ride:${app.train.atStopId}:${stop.id}`, () => rideSeconds({ fromStopId: app.train.atStopId, toStopId: stop.id, routeId: app.train.line, directionId: app.train.directionId })).then(
         (ride) => { if (el.isConnected) { showSong(app, body, ride); rest(); } },
-        (e) => { if (el.isConnected) body.replaceChildren(failure(e.message, load)); },
+        (e) => { if (el.isConnected) body.replaceChildren(failure(e.message, load, noTimes(app))); },
       );
     };
     load();
@@ -58,20 +58,11 @@ function draw(app, body, song, options, enter) {
   rest();
 }
 
-// A label, never a control: the word and three pips, one, two or three filled, so it reads without colour. Worked out from the song.
-const LEVELS = ["easy", "medium", "hard"];
-function levelBadge(song) {
-  const rank = LEVELS.indexOf(songLevel(song));
-  const pips = h("span", "pips", ...LEVELS.map((_, i) => h("i", i <= rank ? "on" : "")));
-  pips.setAttribute("aria-hidden", "true");
-  return h("span", "level", h("span", "sr", "Difficulty: "), LEVELS[rank][0].toUpperCase() + LEVELS[rank].slice(1), pips);
-}
-
 function openSheet(options, current, choose) {
   const list = h("ul");
   const sheet = h("dialog", "sheet", h("h2", "", "More songs"), list);
   for (const s of options) {
-    const row = button("row", () => { sheet.close(); choose(s); }, coverTile(s, "mini"), h("span", "name", s.title, levelBadge(s)), h("span", "chip", clock(songSeconds(s))));
+    const row = songRow(s, () => { sheet.close(); choose(s); });
     if (s.id === current.id) row.setAttribute("aria-current", "true");
     list.append(h("li", "", row));
   }

@@ -32,7 +32,7 @@ Hardware: the DJI Osmo Action 4 (webcam mode, USB) and the Panseba HI-04 project
 
 ## How a tap becomes a hit
 
-**One pose model for each seat.** The camera picture is cut into upright slices, one for each seat (`src/track/slices.js`). A pose model (MediaPipe Pose Landmarker, saved in `public/mediapipe/`, no internet needed) runs on each slice by itself, so it has one person to find. The whole picture with several people missed some of them, which is why it is cut. Each model sees 15 percent more picture on each side of its slice (`PAD_SHARE` in `src/track/seats.js`). A person belongs to the seat whose slice holds their hips, so a neighbour who leans in is dropped for that frame. The slice lines come from the **Fit to the people** button, which puts each line half way between two people's hips, and they follow the people slowly after that (`fitBounds` in `slices.js`, at most 0.02 of the picture a second).
+**One pose model for each seat.** The camera picture is cut into upright slices, one for each seat (`src/track/slices.js`). A pose model (MediaPipe Pose Landmarker, saved in `public/mediapipe/`, no internet needed) runs on each slice by itself, so it has one person to find. The whole picture with several people missed some of them, which is why it is cut. Each model sees 15 percent more picture on each side of its slice (`PAD_SHARE` in `src/track/seats.js`). A person belongs to the seat whose slice holds their hips, so a neighbour who leans in is dropped for that frame. The slice lines come from the **Fit to the people** button, which puts each line half way between two people's hips, and they stay where it put them. If the operator presses **Follow people** in setup, they follow the people slowly in the lobby (`fitBounds` in `slices.js`, at most 0.02 of the picture a second); that switch is off until then.
 
 **Each foot is tracked on its own.** `src/track/taps.js` keeps one track for each foot. A foot's ground is its lowest recent height in the picture. It is lifted when it rises above the ground by 6 percent of the shin's length, and at least 0.012 of the picture's height, and at least four times the shake the foot shows while down (`TAP_DEFAULTS`). A tap is a lift of at least 50 ms followed by a return to the ground, reported at the landing. The same seat cannot tap twice inside 150 ms.
 
@@ -85,7 +85,7 @@ Hardware: the DJI Osmo Action 4 (webcam mode, USB) and the Panseba HI-04 project
 - Whether the slice dots land on real shoes at the real distance, and whether "person found" holds with a person behind a table (`reports/seat-setup.md`).
 - Whether a neighbour leaning into a slice is flagged in live video (`reports/autofit.md`).
 - Three or four people on one camera, a different camera height, and feet that cross (`reports/taps-feet.md`).
-- Whether the lines follow people at a good speed (0.02 a second is a guess), and the edge sizes in the fit (`reports/autofit.md`).
+- Whether the lines follow people at a good speed when Follow people is on (0.02 a second is a guess), and the edge sizes in the fit (`reports/autofit.md`).
 - Facing on the real floor: only the geometry is checked on stills. The default lane for a lone player with facing is reasoned, not tested with a person.
 - The real lag number, and how fast the tracker runs on the laptop with the GPU while the game draws (`reports/seat-stage.md`).
 - The tracking speed on the real camera. Nicolo said on Sat 6:25 PM that it "moves pretty slowly". No number from the real camera has been recorded since.
