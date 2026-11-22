@@ -9,6 +9,7 @@ import { trainFromQuery, trainFromState, sameTrain, DEFAULT_TRAIN } from "./trai
 import { rest } from "./parts.js";
 import { playOpening } from "./opening.js";
 import { SCREENS, FIRST, LIVE } from "./screens/index.js";
+import { keepResults, setResults } from "./after.js";
 
 const HERE_MS = 3000;       // the stage frees the seats of a phone it has not heard from in 10 s
 const FLOOR_WAIT_MS = 3000; // no State for this long: no floor is connected
@@ -47,6 +48,7 @@ const app = {
   trip: {},          // what the person has picked so far: { stop, ride, song }
   send: (msg) => (link ? link.send({ ...msg, clientId: id }) : false),
   go,
+  restart,
   mine: () => (app.state?.players ?? []).filter((p) => p.clientId === id).map((p) => p.spotId),
   want: (spotId, on) => wants[on ? "add" : "delete"](spotId), // the seats this person chose, asked for again if the stage drops them
   floorGone: () => !floorOn() && Date.now() - Math.max(upAt, startedAt) > FLOOR_WAIT_MS,
@@ -85,8 +87,9 @@ function onMessage(msg) {
   if (msg?.type !== "state" || !Array.isArray(msg.players) || !Array.isArray(msg.layout?.spots)) return;
   app.state = msg;
   stateAt = Date.now();
+  keepResults(msg, id); // the results State lasts 8 s; the screens after the song are drawn from this copy
   reclaim();
-  if (!began) return begin();
+  if (!began) return void ready.finally(begin);
   adoptTrain(msg.train);
   sync();
   active?.update?.(msg);
@@ -157,9 +160,18 @@ let began = false;
 const stack = []; // the flow so far, newest last. The browser's Back button walks it.
 
 // What to show: the game's screen while this phone holds a seat in a game on the floor, else where the flow is.
+// A screen with `lands` (the leaderboard) is where a finished song puts the person once, and the flow goes on from it:
+// its Next button moves the stack on while the floor's results State is still there, and that must not pull the person back.
+let landed = false;
 function wanted() {
   const live = app.state && app.mine().length ? LIVE[app.state.status] : null;
-  return live ?? stack.at(-1);
+  if (!live) { landed = false; return stack.at(-1); }
+  if (!registry.get(live).lands) return live;
+  if (!landed) {
+    landed = true;
+    if (stack.at(-1) !== live) { stack.push(live); history.pushState({ pp: stack.length }, ""); }
+  }
+  return stack.at(-1);
 }
 function sync() {
   const next = wanted();
@@ -175,11 +187,20 @@ function render(screenId) {
   rest(); // shown while the tab is away, or just after it came back: at rest, nothing replays
   track.style.setProperty("--p", `${screen.step * 25}%`);
   track.setAttribute("aria-valuenow", screen.step);
-  back.hidden = stack.length < 2 || screenId !== stack.at(-1);
+  showBack();
 }
+const showBack = () => { back.hidden = stack.length < 2 || active.id !== stack.at(-1) || Boolean(registry.get(active.id).lands); };
 function go(screenId) {
   stack.push(screenId);
   history.pushState({ pp: stack.length }, "");
+  sync();
+}
+// Back to the first question. The browser's own history keeps its old entries, which the popstate below ignores once the stack is short.
+function restart() {
+  stack.length = 0;
+  stack.push(FIRST);
+  app.trip = {};
+  history.replaceState({ pp: 1 }, "");
   sync();
 }
 back.onclick = () => history.back();
@@ -187,7 +208,7 @@ addEventListener("popstate", () => {
   if (stack.length < 2) return;
   stack.pop();
   sync();
-  back.hidden = stack.length < 2 || active.id !== stack.at(-1);
+  showBack();
 });
 
 // The first screen. With a train in the address it comes at once; without one it waits a moment for the stage to say
@@ -202,8 +223,19 @@ function begin() {
   history.replaceState({ pp: 1 }, "");
   render(FIRST);
   playOpening(app.line, app.train.car, app.train.headsign);
+  if (registry.has(jump) && jump !== FIRST) stack.push(jump); // `?screen=board` opens that screen directly
   sync();
   showBanner();
 }
-if (fromAddress) begin();
-else setTimeout(begin, ARRIVE_WAIT_MS);
+
+// `?mock=1&screen=board|share|again` opens a screen after a song directly, with a song the fake floor has just played.
+const jump = new URLSearchParams(location.search).get("screen");
+const ready = jump && new URLSearchParams(location.search).has("mock")
+  ? import("./mock.js").then((m) => {
+    const kept = m.demoResults(id, m.mockOptions());
+    setResults(kept);
+    for (const spotId of kept.mine) wants.add(spotId); // the seats are asked for when the State shows them free, as after a lock
+  })
+  : Promise.resolve();
+if (fromAddress) ready.finally(begin);
+else setTimeout(() => ready.finally(begin), ARRIVE_WAIT_MS);

@@ -5,6 +5,7 @@
 import { createSession, trainFromAddress } from "../stage/session.js";
 import { makeLayout, MAX_SEATS } from "../stage/layout.js";
 import { songs } from "../songs/index.js";
+import { keepable } from "./after.js";
 
 const TICK_MS = 100;  // the fake player's feet and the game clock
 const PUSH_MS = 500;  // the real stage sends the State twice a second, and at once on a change
@@ -39,11 +40,36 @@ export function createFakeFloor({ seats = 3, others = [2], train = null } = {}) 
   };
 }
 
+// A finished song for `?mock=1&screen=board|share|again`: the fake floor plays the shortest song to the end in no time, with
+// the phone holding every seat the other phones do not, and the results State is kept as the app would have kept it.
+export function demoResults(clientId, { seats, others, train }) {
+  const floor = createFakeFloor({ seats, others, train });
+  const mine = Array.from({ length: seats }, (_, i) => i + 1).filter((n) => !others.includes(n));
+  let t = 0;
+  floor.tick(t);
+  floor.apply({ type: "join", clientId }, t);
+  for (const spotId of mine) floor.apply({ type: "claim", clientId, spotId }, t);
+  floor.apply({ type: "start", clientId, songIds: [songs[0].id], transit: { stop: "Kenmore", mode: "train", endsAt: Date.now() + 420000 } }, t);
+  while (floor.state(t).status !== "results" && t < 120000) {
+    t += TICK_MS;
+    if (t % 3000 === 0) floor.apply({ type: "here", clientId }, t);
+    floor.tick(t);
+  }
+  return keepable(floor.state(t), clientId);
+}
+
+// The options in the address, shared by the fake link and the demo results.
+export function mockOptions(search = location.search) {
+  const q = new URLSearchParams(search);
+  return {
+    seats: Math.min(MAX_SEATS, Math.max(1, Math.round(Number(q.get("seats"))) || 3)),
+    others: (q.get("others") ?? "2").split(",").map(Number).filter(Boolean),
+    train: trainFromAddress(search),
+  };
+}
+
 export function openMockLink(onMessage, onStatus) {
-  const q = new URLSearchParams(location.search);
-  const seats = Math.min(MAX_SEATS, Math.max(1, Math.round(Number(q.get("seats"))) || 3));
-  const others = (q.get("others") ?? "2").split(",").map(Number).filter(Boolean);
-  const floor = createFakeFloor({ seats, others, train: trainFromAddress(location.search) });
+  const floor = createFakeFloor(mockOptions());
   const push = () => onMessage(floor.state(Date.now()));
   let pushedAt = 0;
   floor.tick(Date.now());

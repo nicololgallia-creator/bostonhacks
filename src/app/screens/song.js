@@ -4,6 +4,7 @@ import { rideSeconds } from "../../mbta/api.js";
 import { pickSongs } from "../../songs/pick.js";
 import { songs, songById } from "../../songs/index.js";
 import { songSeconds } from "../../game/engine.js";
+import { fitting } from "../fit.js";
 import { h, svg, PLAY, clock, button, coverTile, mascotMount, skeleton, failure, rest } from "../parts.js";
 
 export default {
@@ -28,8 +29,7 @@ export default {
 
 function showSong(app, body, ride) {
   const { songIds, fits } = pickSongs({ seconds: ride.seconds });
-  const fitting = songs.filter((s) => songSeconds(s) + 4 <= ride.seconds - 20).reverse(); // longest first
-  const options = fits ? fitting : songs.slice(0, 3);
+  const options = fits ? fitting(ride.seconds) : songs.slice(0, 3);
   app.trip.ride = ride;
   const first = app.trip.song && options.some((s) => s.id === app.trip.song.id) ? app.trip.song : songById(songIds[0]) ?? songs[0]; // Back from the seats keeps the pick
   draw(app, body, first, options, true);

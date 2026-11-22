@@ -30,7 +30,7 @@ export function button(cls, onclick, ...kids) {
 export const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const sleep = (ms) => new Promise((done) => setTimeout(done, reduceMotion ? 0 : ms));
 let calmUntil = 0;
-const isCalm = () => document.hidden || performance.now() < calmUntil;
+export const isCalm = () => document.hidden || performance.now() < calmUntil;
 const settle = () => { for (const a of document.getAnimations()) if (a.effect?.getComputedTiming().iterations !== Infinity) a.finish(); };
 // Call after putting something new on screen: if the tab is away or just back, it shows at rest.
 export const rest = () => { if (isCalm()) settle(); };
