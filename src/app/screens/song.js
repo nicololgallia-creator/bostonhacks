@@ -1,8 +1,9 @@
-// Screen 3: "Recommended song". One song that fits the ride, shown as a ticket, with "See more songs".
+﻿// Screen 3: "Recommended song". One song that fits the ride, shown as a ticket, with "See more songs".
 // "Play this song" goes on to the seats.
 import { rideSeconds } from "../../mbta/api.js";
 import { pickSongs } from "../../songs/pick.js";
 import { songs, songById } from "../../songs/index.js";
+import { songLevel } from "../../songs/level.js";
 import { songSeconds } from "../../game/engine.js";
 import { fitting } from "../fit.js";
 import { h, svg, PLAY, clock, button, coverTile, mascotMount, skeleton, failure, rest } from "../parts.js";
@@ -44,7 +45,7 @@ function draw(app, body, song, options, enter) {
   const ticket = h("div", `ticket${enter ? "" : " swap"}`, h("article", "tk",
     h("div", "tk-top", h("span", "roundel", line.letter), h("span", "", line.name), h("span", "", `Car ${train.car}`)),
     h("div", "tk-main",
-      coverTile(song, "big"),
+      h("div", "tk-cover", coverTile(song, "big"), levelBadge(song)),
       h("h2", "", song.title),
       h("p", "", song.by.split(". ")[0]), // the composer and year; the long credit stays in the song file
     ),
@@ -57,11 +58,20 @@ function draw(app, body, song, options, enter) {
   rest();
 }
 
+// A label, never a control: the word and three pips, one, two or three filled, so it reads without colour. Worked out from the song.
+const LEVELS = ["easy", "medium", "hard"];
+function levelBadge(song) {
+  const rank = LEVELS.indexOf(songLevel(song));
+  const pips = h("span", "pips", ...LEVELS.map((_, i) => h("i", i <= rank ? "on" : "")));
+  pips.setAttribute("aria-hidden", "true");
+  return h("span", "level", h("span", "sr", "Difficulty: "), LEVELS[rank][0].toUpperCase() + LEVELS[rank].slice(1), pips);
+}
+
 function openSheet(options, current, choose) {
   const list = h("ul");
   const sheet = h("dialog", "sheet", h("h2", "", "More songs"), list);
   for (const s of options) {
-    const row = button("row", () => { sheet.close(); choose(s); }, coverTile(s, "mini"), h("span", "name", s.title), h("span", "chip", clock(songSeconds(s))));
+    const row = button("row", () => { sheet.close(); choose(s); }, coverTile(s, "mini"), h("span", "name", s.title, levelBadge(s)), h("span", "chip", clock(songSeconds(s))));
     if (s.id === current.id) row.setAttribute("aria-current", "true");
     list.append(h("li", "", row));
   }

@@ -192,6 +192,16 @@ li.picked .dot svg { transform: scale(1); }
 .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 300ms var(--ease-out); }
 .cover img.on { opacity: 1; }
 .cover.big { align-self: flex-start; width: 7rem; height: 7rem; border-radius: 1.5rem; font-size: 3.5rem; }
+.tk-cover { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+/* how hard a song is: a label like the Car pill, never a control (no hover, no press); the pips say it without colour */
+.level { position: relative; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border: 2.5px solid var(--ink); border-radius: 1rem; font: 400 1rem/1.2 var(--display); color: var(--ink); white-space: nowrap; }
+.level .pips { display: inline-flex; gap: 0.25rem; }
+.level .pips i { width: 0.625rem; height: 0.625rem; border: 2px solid var(--ink); border-radius: 50%; }
+.level .pips i.on { background: var(--ink); }
+.row .level { display: flex; width: fit-content; margin-top: 0.25rem; padding: 0; border: 0; font: 800 0.8125rem/1.2 var(--font, inherit); color: var(--ink-2); }
+.row .level .pips i { width: 0.5rem; height: 0.5rem; border-color: var(--ink-2); }
+.row .level .pips i.on { background: var(--ink-2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .cover.mini { width: 3.5rem; height: 3.5rem; border-radius: 1rem; border-width: 2.5px; font-size: 1.75rem; }
 
 /* the song on the ride: a short track, a train that rides as far as the song goes (the track draws itself with CSS) */
