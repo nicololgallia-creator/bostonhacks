@@ -126,6 +126,47 @@ nextTrains(stopId)  // [{ routeId: "Green-B", line: "Green Line B", directionId:
 rideSeconds({ fromStopId, toStopId, routeId, directionId })  // { seconds: 540, arrivesAt: "...", source: "prediction" | "schedule" }
 ```
 
+**Wave 9 additions (Sat 21 Nov, session-2, after Nicolo's 8:00 PM notes on the real floor).** These add to "Seats and session" and win where they differ. Code: `src/stage/session.js`, `src/stage/layout.js`.
+
+Messages from a phone (every one carries `clientId` as before):
+```json
+{ "type": "mode", "clientId": "a1b2c3", "mode": "versus" }
+{ "type": "start", "clientId": "a1b2c3", "songIds": ["twinkle"], "transit": null, "mode": "versus" }
+{ "type": "skipWarmup", "clientId": "a1b2c3" }
+{ "type": "set", "clientId": "a1b2c3", "warmup": false }
+```
+- `mode` is `"team"` or `"versus"`. `{type:"mode"}` sets the lobby's mode, only in the lobby. In any other status it is refused: "A song is running. Change the mode when it ends." A value that is not one of the two is ignored.
+- `start` may carry `mode`. `"versus"` is versus, any other value is team, and no `mode` keeps what the lobby shows. A refused start changes nothing.
+- `skipWarmup` ends the warm-up and begins the countdown. Sent by a phone that holds a seat, or by the stage (key W). From a phone with no seat: refused, "Take a seat to skip the warm-up." Outside the warm-up, or with no valid `clientId`: ignored, no notice. A paused warm-up cannot be skipped.
+- `set` also takes `warmup: true | false` (default true). It is read at each start; changing it during a warm-up does not end that one.
+
+State from the stage. New or changed fields only; the rest is as in "Seats and session":
+```json
+{ "type": "state", "status": "warmup", "mode": "versus", "winner": null,
+  "warmup": { "need": 4, "beatMs": 600, "maxMs": 15000, "startedAtMs": 812340.5,
+              "players": { "2": { "taps": 3, "ready": false, "tapAtMs": [812950.1, 813561.9, 814170.2] },
+                           "4": { "taps": 4, "ready": true, "tapAtMs": [812941.0, 813555.0, 814160.4, 814770.3] } } },
+  "layout": { "lanes": 1, "spots": [ { "id": 1, "rect": {} }, { "id": 2, "rect": {} }, { "id": 3, "rect": {} }, { "id": 4, "rect": {} } ] },
+  "players": [ { "clientId": "a1b2c3", "spotId": 2, "score": 0, "bonus": 0, "bonusFor": null, "rank": 1, "...": "as before" } ],
+  "settings": { "volume": 0.8, "offsetMs": 120, "warmup": true } }
+```
+- **`status`** is now `lobby`, `warmup`, `countdown`, `playing`, `paused` or `results`. The order is `lobby -> warmup -> countdown -> playing -> results`. `warmup` and `countdown` are both "a song has been started, play has not begun": phone screens that treat `countdown` as "starting" must treat `warmup` the same.
+- **`mode`** (`"team" | "versus"`): in the lobby, the last one chosen. From the start of a song to its results, the mode that song runs as: versus with only one taken seat runs as `"team"` for that song, and the lobby goes back to showing the chosen mode afterwards. Versus needs 2 to 4 taken seats.
+- **`players[].rank`**: versus only, else `null`. 1 is best, equal scores share a rank and the next rank is skipped (1, 1, 3). Live while the song plays, from `score + bonus`.
+- **`winner`**: `{ spotId, score } | null`. Set only while `status` is `results` in a versus song with two or more seats left, and only when one seat is alone at rank 1. `null` for a tie, team mode, any other status, or when a seat left and fewer than two remain. `score` is that seat's song score.
+- **Versus pays no bonuses.** The +50 best combo and +25 most perfects are NOT given in versus (`bonus` is 0, `bonusFor` is null), because they would break "the same top score for every player". Team mode pays them as before. `team.score` is still the sum of the seats.
+- **Which seats are in the game** is `players[]` (one entry per taken seat, in seat order, in the lobby too). There is no separate `taken` field. The tracker and the floor read `players.map((p) => p.spotId)`. A song plays on the taken seats only, one lane each when 2 or more are taken (the lane rule counts taken seats, not seats in the layout).
+- **Seats**: the default layout is four seats in a row (`DEFAULT_SEATS` in `layout.js`). `?seats=N` on the stage wins, then a layout saved by setup or autoplace. A saved layout that is exactly the old automatic 3 even pads is not a choice and is dropped (`keptLayout`). Any phone may claim any free seat while no song is running.
+- **The warm-up** (`warmup` is `null` in every status except `warmup`, and while paused after a warm-up began). All times are the stage's clock (the same `nowMs` as `tick`), in ms.
+  - It begins at a start from the lobby when `settings.warmup` is true. It is for the first song only: the next song of a queue, a skip, and a start by the very same people in the very same seats as the last warm-up (a "play again", which goes results -> lobby -> start) go straight to the countdown. A warm-up that was stopped before it ended does not count, so the next start warms up again. A warm-up that timed out or was skipped counts.
+  - `need` 4 taps per taken seat. `beatMs` 600: the floor pulses a target every 600 ms counted from `startedAtMs`; the taps do not have to be on the beat. `maxMs` 15000: the warm-up ends 15 s after `startedAtMs` whatever happened. `startedAtMs` moves later by the time spent paused.
+  - A tap is an arrival: the number of feet standing in the seat's pad rises. A foot with `lifted: true` does not stand. A foot gone for under 150 ms (the engine's flicker rule) has not left. Two feet landing together are one tap. A foot already standing when the warm-up begins is not a tap. `players["<spotId>"]` has `taps`, `ready` (`taps >= need`) and `tapAtMs` (each tap's time, at most 32). Keys are the seat ids as strings.
+  - It ends the moment every taken seat is `ready`, at `maxMs`, or at `skipWarmup`. The 3 s countdown starts at that tick. A seat that is not ready still plays. At `maxMs` only, the phones of the seats not ready get `notice`: `{ for: <clientId>, text: "The floor did not see your taps. Lift your foot higher." }`. With more than one such phone the single notice slot is for everyone (`for: null`). A skip gives no notice.
+  - `pause`, `resume`, `stop`, `skip` and a phone going quiet behave as in the countdown. A quiet phone keeps its seats. Pause freezes the warm-up clock; resume carries on. `skip` during a warm-up goes to the next queued song's countdown, or the lobby.
+  - What the floor reads during `warmup`: `tick()` returns `{ status: "warmup", pads: [{ spotId, lanes, tiles: [] }] for each taken seat, songMs: null, song: <the song loaded> }`. `snapshot().song` is `{ id, title, seconds }`, `queue` is the rest, `players[].score` etc. are zero, `team.total` is the sum of the parts. `secondsLeft` is the song's length plus the 3 s countdown and 2.5 s slide-in, held still (it does not count down). The pads exist so the seated tracker can keep giving feet per lane. `songMs` is `null` in the warm-up and in a pause that began there.
+  - Stage events from `drain()`: `{ type: "status", status: "warmup" }` on entry, and `{ type: "warmupTap", spotId, taps, atMs }` on every tap (for a click sound and a flash).
+  - The stage's `?demo=1` Space (and `autostart=1`) sends `set warmup:false` first, so the demo goes straight to the countdown.
+
 ## Fake on purpose
 
 - The mouse stands in for feet (`stage.html?feet=mouse`) so the game can be built and tested with no hardware.
