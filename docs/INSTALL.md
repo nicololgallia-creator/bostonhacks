@@ -4,6 +4,12 @@ For BU Spark staff. You do not need anyone from the team in the room. TTiles is 
 
 A step marked **(not yet proven on the real floor)** has run only on recordings, a fake camera, or a mouse. If it fails, the troubleshooting table at the end has the fix. Written Sat 21 Nov 2026.
 
+## The short way: one link
+
+On any laptop with the camera and projector plugged in and internet, open **https://ttiles.us/floor** in Edge or Chrome and allow the camera when it asks. That is the whole floor: nothing to install, nothing to start. The first time, give it up to a minute to load the foot tracker; after that it is quick. Two small buttons sit in the lobby's corner: **Calibrate** (check the camera, straighten the picture, place the pads) and **Full screen**. Press either once and the sound is on. Players scan the code on the floor. (not yet proven on the real floor)
+
+The rest of this guide is the same floor started from the laptop itself, for a room with no internet.
+
 ## What is in the box
 
 | Thing | What it is for |
