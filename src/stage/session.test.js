@@ -69,7 +69,7 @@ const seatsOf = (s, now = 0) => s.snapshot(now).players.map((p) => [p.clientId, 
 test("a new session is a lobby with the State message's exact shape, four seats, team mode, the warm-up on", () => {
   const snap = createSession({ songs }).snapshot(0);
   assert.deepEqual(snap, {
-    type: "state", status: "lobby", mode: "team", difficulty: "normal", winner: null, warmup: null, notice: null, layout: makeLayout({ seats: 4 }), train: DEFAULT_TRAIN,
+    type: "state", status: "lobby", mode: "team", winner: null, warmup: null, notice: null, layout: makeLayout({ seats: 4 }), train: DEFAULT_TRAIN,
     players: [], team: { score: 0, hits: 0, total: 0, grade: null },
     song: null, queue: [], secondsLeft: 0, transit: null, ready: { camera: false, calibrated: false },
     settings: { volume: 0.8, offsetMs: 120, warmup: true },
@@ -1516,67 +1516,4 @@ test("the new messages are ignored when malformed and never throw", () => {
     assert.doesNotThrow(() => s.apply(m, 0));
   }
   assert.deepEqual(s.snapshot(0), before);
-});
-
-// ---- levels
-
-test("level: the lobby holds the last one chosen, a phone sets it, anything else is ignored", () => {
-  const s = room({ 1: "ann", 2: "ben" }, { warm: false });
-  assert.equal(s.snapshot(0).difficulty, "normal");
-  s.apply({ type: "difficulty", clientId: "ben", difficulty: "hard" }, 0);
-  assert.equal(s.snapshot(0).difficulty, "hard");
-  assert.equal(said(s), null);
-  for (const difficulty of ["banana", undefined, 3, null, "HARD"]) s.apply({ type: "difficulty", clientId: "ann", difficulty }, 0);
-  assert.equal(s.snapshot(0).difficulty, "hard");
-  assert.equal(said(s), null);
-  s.apply({ type: "difficulty", clientId: "stranger", difficulty: "easy" }, 0); // never joined
-  assert.equal(s.snapshot(0).difficulty, "hard");
-  assert.match(said(s), /Join before/);
-  s.apply({ type: "difficulty", clientId: "ann", difficulty: "easy" }, 0);
-  assert.equal(s.snapshot(0).difficulty, "easy");
-});
-
-test("level: a start carries it, a level that is not one of the three is normal, none keeps the lobby's, and a running song refuses a change", () => {
-  const levelAfter = (setup, extra) => {
-    const s = room({ 1: "ann", 2: "ben" }, { warm: false });
-    if (setup) s.apply({ type: "difficulty", clientId: "ann", difficulty: setup }, 0);
-    start(s, ["tiny"], extra);
-    return s.snapshot(0).difficulty;
-  };
-  assert.equal(levelAfter(null, { difficulty: "hard" }), "hard");
-  assert.equal(levelAfter(null, { difficulty: "easy" }), "easy");
-  assert.equal(levelAfter("hard", { difficulty: "banana" }), "normal");
-  assert.equal(levelAfter("hard", { difficulty: 7 }), "normal");
-  assert.equal(levelAfter("hard", {}), "hard"); // an older phone sends none: the floor already shows hard
-  assert.equal(levelAfter(null, {}), "normal");
-  const s = room({ 1: "ann", 2: "ben" }, { warm: false });
-  start(s, ["nope"], { difficulty: "hard" }); // a refused start changes nothing
-  assert.equal(s.snapshot(0).difficulty, "normal");
-  start(s, ["tiny"], { difficulty: "easy" });
-  s.apply({ type: "difficulty", clientId: "ann", difficulty: "hard" }, 10);
-  assert.equal(said(s, 10), "A song is running. Change the level when it ends.");
-  assert.equal(s.snapshot(10).difficulty, "easy");
-});
-
-test("level: the session splits the song with it, so the seats' tiles are the level's, and the stage's sound split agrees", () => {
-  const totals = {};
-  for (const difficulty of ["easy", "normal", "hard"]) {
-    const s = room({ 1: "ann", 2: "ben" }, { warm: false });
-    start(s, ["long"], { difficulty });
-    const snap = s.snapshot(0);
-    assert.equal(snap.difficulty, difficulty);
-    const parts = splitParts(long, 2, { mode: "team", difficulty }); // what main.js asks for, from snap.mode and snap.difficulty
-    assert.deepEqual(snap.players.map((p) => p.total), parts.map((p) => p.notes.length), `${difficulty}: the same tiles`);
-    totals[difficulty] = snap.team.total;
-  }
-  assert.ok(totals.hard > totals.normal && totals.normal > totals.easy, JSON.stringify(totals));
-});
-
-test("level: a duel started at any level gives every seat the same number of tiles", () => {
-  for (const difficulty of ["easy", "normal", "hard"]) {
-    const s = room({ 1: "ann", 2: "ben" }, { warm: false });
-    start(s, ["long"], { mode: "versus", difficulty });
-    const [a, b] = s.snapshot(0).players;
-    assert.equal(a.total, b.total, `${difficulty}: the same number of tiles`);
-  }
 });

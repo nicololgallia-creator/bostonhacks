@@ -1,7 +1,5 @@
 // Screen 3: "Recommended song". One song that fits the ride, shown as a ticket, with "See more songs".
-// A three-way level (Easy, Normal, Hard) sits under the ticket: one choice for the whole game, remembered on this phone, sent to
-// the floor, and sent again with the start. "Play this song" goes on to the seats.
-import "./song.css";
+// "Play this song" goes on to the seats.
 import { rideSeconds } from "../../mbta/api.js";
 import { pickSongs } from "../../songs/pick.js";
 import { songs, songById } from "../../songs/index.js";
@@ -29,44 +27,6 @@ export default {
   },
 };
 
-const LEVELS = [
-  { id: "easy", label: "Easy", note: "Fewer tiles, no holds." },
-  { id: "normal", label: "Normal", note: "The song as written." },
-  { id: "hard", label: "Hard", note: "More tiles and more holds." },
-];
-const REMEMBER = "pp:difficulty";
-const remembered = () => { try { return localStorage.getItem(REMEMBER); } catch { return null; } };
-
-// The three-way choice. The level is app.trip.difficulty (the seats screen sends it with the start).
-function levelPicker(app) {
-  const { trip } = app;
-  const last = trip.difficulty ?? remembered();
-  trip.difficulty = LEVELS.some((l) => l.id === last) ? last : "normal";
-  const note = h("p", "level-note");
-  note.setAttribute("role", "status");
-  const pills = LEVELS.map((l) => {
-    const b = button("level-pill", () => pick(l.id), l.label);
-    b.setAttribute("role", "radio");
-    return b;
-  });
-  const group = h("div", "levels", ...pills);
-  group.setAttribute("role", "radiogroup");
-  group.setAttribute("aria-label", "How hard");
-  function paint() {
-    LEVELS.forEach((l, i) => pills[i].setAttribute("aria-checked", String(l.id === trip.difficulty)));
-    note.textContent = LEVELS.find((l) => l.id === trip.difficulty).note;
-  }
-  function pick(id) {
-    trip.difficulty = id;
-    try { localStorage.setItem(REMEMBER, id); } catch { /* private browsing can refuse storage: the choice just is not remembered */ }
-    if (app.state?.status === "lobby") app.send({ type: "difficulty", difficulty: id }); // the floor shows it in the lobby; a running song would refuse
-    paint();
-  }
-  paint();
-  if (app.state?.status === "lobby") app.send({ type: "difficulty", difficulty: trip.difficulty });
-  return h("div", "level-pick", group, note);
-}
-
 function showSong(app, body, ride) {
   const { songIds, fits } = pickSongs({ seconds: ride.seconds });
   const options = fits ? fitting(ride.seconds) : songs.slice(0, 3);
@@ -93,7 +53,7 @@ function draw(app, body, song, options, enter) {
   const play = button("btn", () => { trip.song = song; app.go("seats"); }, "Play this song", h("span", "go", svg(PLAY)));
   const more = button("btn ghost", () => openSheet(options, song, (next) => draw(app, body, next, options, false)), "See more songs");
   body.className = enter ? "song-body flow" : "song-body flow still"; // a swap of the song on the same screen shows at rest: nothing replays
-  body.replaceChildren(ticket, levelPicker(app), h("div", "actions", play, more));
+  body.replaceChildren(ticket, h("div", "actions", play, more));
   rest();
 }
 

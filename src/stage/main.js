@@ -157,10 +157,10 @@ function nameStop() {
 let backedOf = null; // the song object `backed` was made from
 let backedMs = Infinity; // the song clock at the last call: a clock that went back is a new play
 let backed = null;
-function backedSong(view, mode, difficulty) {
+function backedSong(view, mode) {
   if (view.song !== backedOf || view.songMs < backedMs) {
     backedOf = view.song;
-    backed = { ...view.song, backing: backingLeft(view.song, splitParts(view.song, view.pads.length, { mode, difficulty })) };
+    backed = { ...view.song, backing: backingLeft(view.song, splitParts(view.song, view.pads.length, { mode })) };
   }
   backedMs = view.songMs;
   return backed;
@@ -263,7 +263,7 @@ function frame() {
   const events = session.drain();
   playSounds(events);
   if (snap.settings.volume !== appliedVolume) { appliedVolume = snap.settings.volume; synth.setVolume?.(appliedVolume); }
-  if (view.status === "countdown" || view.status === "playing") synth.backing?.(backedSong(view, snap.mode, snap.difficulty), view.songMs + session.offsetMs()); // AUDIO (music)
+  if (view.status === "countdown" || view.status === "playing") synth.backing?.(backedSong(view, snap.mode), view.songMs + session.offsetMs()); // AUDIO (music)
   if (!trackTest) draw({
     status: view.status,
     layout: snap.layout,
@@ -275,7 +275,7 @@ function frame() {
     soundLocked: synth.locked(), // AUDIO (music): true while the browser keeps sound off; any key or click unlocks it
     train: snap.train, // the tiles floor takes the line's colour and names the stop from it
     team: snap.team,
-    mode: snap.mode, difficulty: snap.difficulty, winner: snap.winner, warmup: snap.warmup, // wave 9: versus, its winner (results only) and the warm-up (status "warmup")
+    mode: snap.mode, winner: snap.winner, warmup: snap.warmup, // wave 9: versus, its winner (results only) and the warm-up (status "warmup")
     feet: fieldFeet,
     events,
     qr,

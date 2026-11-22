@@ -5,8 +5,7 @@ import { HIT_V, ZONE_V, TRAVEL_MS, songSeconds } from "./engine.js";
 import { INK, WHITE, GOLD, seatOf, isDuel, matchup, clamp01, easeOut, backOut, spring } from "./floor-look.js";
 
 const clockText = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-const levelName = (view) => ({ easy: "Easy", hard: "Hard" })[view.difficulty] ?? ""; // Normal is not named
-const MASCOT_URL ="/mascot/conductor.svg"; // public/mascot/conductor.svg, never redrawn or recoloured
+const MASCOT_URL = "/mascot/conductor.svg"; // public/mascot/conductor.svg, never redrawn or recoloured
 const MASCOT_ASPECT = 320 / 380;
 export const HUD_BOTTOM = 0.2; // as a share of the height: the lanes start under the clock and the score
 
@@ -306,24 +305,16 @@ export function createScreens(kit) {
       const bob = Math.sin(now * 0.003);
       kit.text("Scan to play", W / 2, H * 0.062 + bob * H * 0.006, H * 0.1, INK);
       // One row under the headline: the mode ("Team" or "Duel") on a plate, then where the train is going.
-      // A second plate in gold beside the mode names the level, only when it is not Normal.
       const mode = view.mode === "versus" ? "Duel" : "Team";
-      const level = levelName(view);
       const modeW = kit.width(mode, H * 0.052) + 44 * U;
-      const levelW = level ? kit.width(level, H * 0.052) + 44 * U : 0;
-      const platesW = modeW + (level ? 14 * U + levelW : 0);
       const modeH = H * 0.066;
       const where = train ? `${th.name} to ${train.headsign}, car ${train.car}` : "";
-      const whereW = train ? Math.min(kit.width(where, H * 0.052, false), W * 0.92 - platesW - 28 * U) : 0;
-      const rowX = (W - (platesW + (train ? 28 * U + whereW : 0))) / 2;
+      const whereW = train ? Math.min(kit.width(where, H * 0.052, false), W * 0.92 - modeW - 28 * U) : 0;
+      const rowX = (W - (modeW + (train ? 28 * U + whereW : 0))) / 2;
       if (!view.soundLocked) {
         kit.plate(rowX, H * 0.1445 - modeH / 2, modeW, modeH, modeH / 2, WHITE);
         kit.text(mode, rowX + modeW / 2, H * 0.1445 + 2 * U, H * 0.052, INK);
-        if (level) {
-          kit.plate(rowX + modeW + 14 * U, H * 0.1445 - modeH / 2, levelW, modeH, modeH / 2, GOLD);
-          kit.text(level, rowX + modeW + 14 * U + levelW / 2, H * 0.1445 + 2 * U, H * 0.052, INK);
-        }
-        if (train) kit.text(where, rowX + platesW + 28 * U, H * 0.1445, H * 0.052, INK, false, "left", whereW);
+        if (train) kit.text(where, rowX + modeW + 28 * U, H * 0.1445, H * 0.052, INK, false, "left", whereW);
       }
 
       const size = H * 0.47; // 0.52 reached down into the free seats' "Open" with four seats in the layout
@@ -372,14 +363,6 @@ export function createScreens(kit) {
       const s = (now - enteredAt) / 1000;
       const duel = isDuel(view);
       const { winner } = view;
-      // The level's gold plate at x, centred on y and half-height `r` (the same plate as the lobby's), only when it is not Normal.
-      const levelPlate = (x, y, r) => {
-        const level = levelName(view);
-        if (!level) return;
-        const w = kit.width(level, H * 0.05) + 40 * U;
-        kit.plate(x, y - r, w, r * 2, r, GOLD);
-        kit.text(level, x + w / 2, y + 2 * U, H * 0.05, INK);
-      };
       if (!ranked) {
         ranked = players.map((p) => ({ ...p, total: p.score + p.bonus }));
         ranked.sort(duel ? (a, b) => a.rank - b.rank || a.spotId - b.spotId : (a, b) => b.total - a.total || a.spotId - b.spotId);
@@ -392,7 +375,6 @@ export function createScreens(kit) {
         kit.text("Duel", W * 0.06, H * 0.1, H * 0.1, INK, true, "left");
         kit.plate(W * 0.06 + word + 24 * U, H * 0.1 - H * 0.0375, tag, H * 0.075, H * 0.0375, GOLD);
         kit.text(matchup(players.length), W * 0.06 + word + 24 * U + tag / 2, H * 0.1 + 3 * U, H * 0.055, INK);
-        levelPlate(W * 0.06 + word + 24 * U + tag + 14 * U, H * 0.1, H * 0.0375);
         if (!winner && s > 0.3) {
           const k = backOut((s - 0.3) / 0.45);
           const w = kit.width("Tie", H * 0.09) + 70 * U;
@@ -407,7 +389,6 @@ export function createScreens(kit) {
           kit.text(team?.grade ?? "-", W * 0.11, H * 0.12, H * 0.11 * gs, INK);
         }
         kit.text("Team score", W * 0.2, H * 0.075, H * 0.055, INK, false, "left");
-        levelPlate(W * 0.2 + kit.width("Team score", H * 0.055, false) + 20 * U, H * 0.075, H * 0.0375);
         kit.text(String(Math.round((team?.score ?? 0) * easeOut((s - 0.5) / 1.1))), W * 0.2, H * 0.155, H * 0.1, INK, true, "left");
         if (song) kit.text(song.title, W * 0.96, H * 0.075, H * 0.06, INK, true, "right", W * 0.5);
         kit.text(`${team?.hits ?? 0} of ${team?.total ?? 0} hit`, W * 0.96, H * 0.155, H * 0.055, INK, false, "right");

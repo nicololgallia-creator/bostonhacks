@@ -86,11 +86,18 @@ test("every real song keeps the shape for 1 to 4 players, in both modes", () => 
   for (const song of songs) for (const mode of ["team", "versus"]) for (let seats = 1; seats <= 4; seats++) checkShape(song, seats, mode);
 });
 
-test("every note of a real song is on a tile for someone, with its own beat and pitch (team mode)", () => {
+test("every note of a real song that a foot can follow is on a tile for someone, with its own beat and pitch (team mode)", () => {
   for (const song of songs) {
     for (let seats = 1; seats <= 4; seats++) {
       const tiles = new Set(splitParts(song, seats).flatMap((p) => p.notes.map((n) => `${n.beat}:${n.midi}`)));
-      for (const n of song.notes) assert.ok(tiles.has(`${n.beat}:${n.midi}`), `${song.id}, ${seats} seats: note at beat ${n.beat} is missing`);
+      // A tune note that starts under MIN_GAP_MS after the tile before it is left to the band: a foot cannot follow it (chart.js, melodyTiles).
+      let last = -Infinity;
+      for (const n of [...song.notes].sort((x, y) => x.beat - y.beat)) {
+        const at = (n.beat * 60000) / song.bpm;
+        if (at - last < MIN_GAP_MS) continue;
+        last = at;
+        assert.ok(tiles.has(`${n.beat}:${n.midi}`), `${song.id}, ${seats} seats: note at beat ${n.beat} is missing`);
+      }
     }
   }
 });
