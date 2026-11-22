@@ -3,7 +3,7 @@
 // Drawn from the copy of the results kept in after.js, so the stage going back to the lobby does not change it.
 import "./after.css";
 import { h, svg, PLAY, button, mascotMount, reduceMotion, isCalm } from "../parts.js";
-import { lastResults, rank } from "../after.js";
+import { lastResults, rank, isTie, matchup } from "../after.js";
 import { seatOf } from "../lines.js";
 
 const COUNT_MS = 900;   // how long a score takes to count up
@@ -48,8 +48,9 @@ function rowOf(row, i, train, stops) {
   li.style.setProperty("--i", i);
   li.style.setProperty("--seat", seatOf(train.line, row.spotId).fill);
   li.dataset.mine = row.mine;
-  li.setAttribute("aria-label", `${row.place}. Player ${row.spotId}${row.mine ? ", you" : ""}, ${fmt(row.total)} points${row.bonus ? `, ${row.bonus} bonus for ${row.bonusFor}` : ""}`);
+  li.setAttribute("aria-label", `${row.place}. Player ${row.spotId}${row.mine ? ", you" : ""}, ${fmt(row.total)} points${row.bonus ? `, ${row.bonus} bonus for ${row.bonusFor}` : ""}${row.winner ? ", winner" : ""}`);
   if (row.bonus) li.append(bonusTag(row));
+  if (row.winner) li.append(h("span", "bonus", h("b", "", "Winner")));
   return li;
 }
 
@@ -84,13 +85,15 @@ export default {
         h("div", "notice", h("h2", "", "No scores to show."), h("p", "", "Play a song on the floor and the scores show here when it ends."), button("btn", () => app.restart(), "Pick a song"))) };
     }
     const stops = [];
-    const rows = rank(kept.players, app.id);
+    const rows = rank(kept.players, app.id, kept);
     const one = rows.length === 1;
+    const duel = kept.mode === "versus" && !one; // a duel has no team score and no bonuses
+    const title = one ? ["Your ", h("span", "hl", "score")] : duel ? [h("span", "hl", isTie(rows, kept) ? "Tie" : matchup(rows.length))] : [h("span", "hl", "Leaderboard")];
     const body = one ? solo(rows[0], kept, app.train, stops) : h("ol", "ranks", ...rows.map((r, i) => rowOf(r, i, app.train, stops)));
     const el = h("div", "flow board",
-      h("div", "top", h("h1", "ask", ...(one ? ["Your ", h("span", "hl", "score")] : [h("span", "hl", "Leaderboard")])), mascotMount("board")),
+      h("div", "top", h("h1", "ask", ...title), mascotMount("board")),
       body,
-      one ? "" : team(kept, stops),
+      one || duel ? "" : team(kept, stops),
       h("div", "actions", button("btn", () => app.go("share"), "Next", h("span", "go", svg(PLAY)))));
     return { el, destroy: () => stops.forEach((stop) => stop()) };
   },

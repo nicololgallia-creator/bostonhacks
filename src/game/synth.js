@@ -5,8 +5,12 @@
 //
 //   createSynth()                      -> the sound player for the page
 //   createSynth({ context })           -> the same on a given AudioContext (sound-check uses an offline one)
+//   createSynth({ context, guide })    -> the same with another GUIDE_LEVEL (sound-check compares 0 with the default)
 //
 // Every voice goes through one compressor, so four players hitting at once never clips.
+//
+// The backing is the song's own `backing` list (songs/*.json; negative beats are the count-in) plus, quietly, the tune itself
+// (the guide), so a missed tile leaves no hole. It follows the song clock: nothing here depends on a hit.
 
 const FIRST = 36; // midi of the lowest sample (C2)
 const STEP = 3; // a sample every minor third
@@ -14,12 +18,19 @@ const COUNT = 21; // C2 up to C7
 const DECAY = 1.4; // seconds a struck note takes to die away
 const AHEAD_MS = 120; // backing looks this far ahead of the song clock
 const LATE_MS = 200; // a backing note this far behind the clock is skipped, not played late
+const HIT_PEAK = 1.6; // a hit note's voice gain
+const BACK_PEAK = 0.9; // a backing note's voice gain, before BACK_GAIN
+const BACK_GAIN = 0.5; // the backing bus; tools/sound-check.mjs measures backing against a hit (aim: hit 6 to 9 dB above)
+const LOUD = 0.55; // sets how far under a hit the backing sits: backBus = BACK_GAIN * LOUD / sqrt(density), see density()
+const WEIGHT = { kick: 1, snare: 1, hat: 0.1, click: 0, tick: 0 }; // what each drum adds to density; a pitched note adds 1
+const GUIDE_LEVEL = 0.4; // the tune itself under the backing, as a share of a backing note. 0 turns the guide off
 const NAMES = { 0: "C", 3: "Ds", 6: "Fs", 9: "A" };
 
 const sampleName = (midi) => NAMES[midi % 12] + (Math.floor(midi / 12) - 1); // 36 -> "C2", 39 -> "Ds2"
 
-export function createSynth({ context = null } = {}) {
+export function createSynth({ context = null, guide = GUIDE_LEVEL } = {}) {
   let ctx = null;
+  const scheduled = { backing: 0, guide: 0 }; // entries handed to the audio clock, for scripted checks
   let volume = 0.6;
   let master, bus, backBus; // master volume -> compressor -> speakers; bus holds every voice
   let buffers = null; // decoded samples, or null while the oscillator is used
@@ -29,12 +40,13 @@ export function createSynth({ context = null } = {}) {
   let list = []; // its backing, sorted by beat
   let next = 0; // index of the next backing entry to play
   let lastMs = -Infinity;
+  let scale = 1; // this song's backing loudness, from density()
 
   function newBus() {
     bus = ctx.createGain();
     bus.connect(master);
     backBus = ctx.createGain();
-    backBus.gain.value = 0.5;
+    backBus.gain.value = BACK_GAIN * scale;
     backBus.connect(bus);
   }
 
@@ -51,6 +63,17 @@ export function createSynth({ context = null } = {}) {
     squash.release.value = 0.2;
     master.connect(squash).connect(ctx.destination);
     newBus();
+  }
+
+  // How loud a backing plays, measured: weighted entries a second over the first 20 s, with a note of the tune counting guide squared.
+  // Backing level in dB runs 10 * log10(density) - 32.3, to within 1 dB on all 17 songs (tools/sound-check.mjs), so a thick
+  // MIDI arrangement and a thin bass-and-chord one both end up the same distance under a hit.
+  function density(entries, msPerBeat) {
+    const end = Math.min(20, (entries.at(-1)?.beat * msPerBeat) / 1000);
+    if (!(end > 0)) return 0;
+    let sum = 0;
+    for (const e of entries) if (e.beat >= 0 && (e.beat * msPerBeat) / 1000 <= end) sum += e.guide ? guide ** 2 : e.drum ? WEIGHT[e.drum] ?? 0 : 1;
+    return sum / end;
   }
 
   function unlock() {
@@ -121,6 +144,17 @@ export function createSynth({ context = null } = {}) {
   function drum(kind, when) {
     const gain = ctx.createGain();
     gain.connect(backBus);
+    if (kind === "click" || kind === "tick") { // the count-in: "click" is the high first one
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = kind === "click" ? 1568 : 1046;
+      gain.gain.setValueAtTime(0.6, when);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.06);
+      osc.connect(gain);
+      osc.start(when);
+      osc.stop(when + 0.08);
+      return;
+    }
     if (kind === "kick") {
       const osc = ctx.createOscillator();
       osc.frequency.setValueAtTime(150, when);
@@ -158,9 +192,12 @@ export function createSynth({ context = null } = {}) {
       volume = Math.min(1, Math.max(0, v));
       if (ctx) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.02);
     },
-    note(midi) {
-      if (ctx) voice(midi, 1.6);
+    note(midi, when = ctx?.currentTime) {
+      if (ctx) voice(midi, HIT_PEAK, { when });
     },
+    // True while the browser keeps sound off: no key or click yet, or the context is not running. The floor shows it.
+    locked: () => !context && (!ctx || ctx.state !== "running"),
+    scheduled: () => ({ ...scheduled }),
     // A note that rings until the returned function is called, for hold tiles.
     noteOn(midi) {
       return ctx ? voice(midi, 1.4, { sustain: true }) : () => {};
@@ -178,14 +215,20 @@ export function createSynth({ context = null } = {}) {
       osc.start(t);
       osc.stop(t + 0.25);
     },
-    // Call every frame with the game's own song clock. Plays each backing entry once as the clock
-    // passes it. A paused clock plays nothing new; a clock that jumps back starts the backing over.
+    // Call every frame with the game's own song clock (negative in the count-in). Plays each backing entry, and each
+    // note of the tune at guide level, once as the clock passes it. A paused clock plays nothing new; a clock that jumps
+    // back starts the backing over. While the browser keeps sound off it plays nothing and skips ahead, so a late unlock
+    // never dumps a pile of old notes.
     backing(forSong, songMs) {
-      if (!ctx || !forSong?.backing?.length) return;
+      if (!ctx || !forSong || (!context && ctx.state !== "running")) return;
       if (forSong !== song) {
         song = forSong;
-        list = [...forSong.backing].sort((a, b) => a.beat - b.beat);
+        const tune = guide > 0 ? (forSong.notes ?? []).map((n) => ({ beat: n.beat, midi: n.midi, beats: n.beats, guide: true })) : [];
+        list = [...(forSong.backing ?? []), ...tune].sort((a, b) => a.beat - b.beat);
         next = 0;
+        const d = density(list, 60000 / forSong.bpm);
+        scale = d > 0 ? Math.min(1.5, Math.max(0.1, LOUD / Math.sqrt(d))) : 1;
+        backBus.gain.setValueAtTime(BACK_GAIN * scale, ctx.currentTime);
       }
       if (songMs < lastMs) next = 0;
       lastMs = songMs;
@@ -195,8 +238,9 @@ export function createSynth({ context = null } = {}) {
         const startMs = e.beat * msPerBeat;
         if (startMs < songMs - LATE_MS) continue;
         const when = ctx.currentTime + Math.max(0, startMs - songMs) / 1000;
+        scheduled[e.guide ? "guide" : "backing"]++;
         if (e.drum) drum(e.drum, when);
-        else voice(e.midi, 0.45, { when, sustain: true, dest: backBus })(when + (e.beats * msPerBeat) / 1000);
+        else voice(e.midi, BACK_PEAK * (e.guide ? guide : 1), { when, sustain: true, dest: backBus })(when + (e.beats * msPerBeat) / 1000);
       }
     },
     // Fades out everything playing or scheduled, and starts the backing over. Call it on pause and on stop.

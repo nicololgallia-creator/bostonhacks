@@ -11,5 +11,32 @@
     {"beat": 30, "midi": 72, "beats": 2}, {"beat": 32, "midi": 71, "beats": 2}, {"beat": 34, "midi": 69, "beats": 2}, {"beat": 36, "midi": 77, "beats": 1},
     {"beat": 37, "midi": 77, "beats": 1}, {"beat": 38, "midi": 76, "beats": 2}, {"beat": 40, "midi": 72, "beats": 2}, {"beat": 42, "midi": 74, "beats": 2},
     {"beat": 44, "midi": 72, "beats": 4}
+  ],
+  "backing": [
+    {"beat": -8, "drum": "click"}, {"beat": -6, "drum": "tick"}, {"beat": -4, "drum": "tick"}, {"beat": -2, "drum": "tick"},
+    {"beat": 0, "midi": 55, "beats": 2}, {"beat": 0, "midi": 60, "beats": 2}, {"beat": 0, "midi": 64, "beats": 2}, {"beat": 0, "drum": "hat"},
+    {"beat": 1, "drum": "hat"}, {"beat": 2, "midi": 48, "beats": 4}, {"beat": 2, "drum": "kick"}, {"beat": 4, "midi": 55, "beats": 2},
+    {"beat": 4, "midi": 60, "beats": 2}, {"beat": 4, "midi": 64, "beats": 2}, {"beat": 4, "drum": "hat"}, {"beat": 5, "drum": "hat"},
+    {"beat": 6, "midi": 55, "beats": 2}, {"beat": 6, "midi": 60, "beats": 2}, {"beat": 6, "midi": 64, "beats": 2}, {"beat": 6, "drum": "hat"},
+    {"beat": 7, "drum": "hat"}, {"beat": 8, "midi": 43, "beats": 4}, {"beat": 8, "drum": "kick"}, {"beat": 10, "midi": 55, "beats": 2},
+    {"beat": 10, "midi": 59, "beats": 2}, {"beat": 10, "midi": 62, "beats": 2}, {"beat": 10, "drum": "hat"}, {"beat": 11, "drum": "hat"},
+    {"beat": 12, "midi": 55, "beats": 2}, {"beat": 12, "midi": 59, "beats": 2}, {"beat": 12, "midi": 62, "beats": 2}, {"beat": 12, "drum": "hat"},
+    {"beat": 13, "drum": "hat"}, {"beat": 14, "midi": 43, "beats": 4}, {"beat": 14, "drum": "kick"}, {"beat": 16, "midi": 55, "beats": 2},
+    {"beat": 16, "midi": 59, "beats": 2}, {"beat": 16, "midi": 62, "beats": 2}, {"beat": 16, "drum": "hat"}, {"beat": 17, "drum": "hat"},
+    {"beat": 18, "midi": 55, "beats": 2}, {"beat": 18, "midi": 59, "beats": 2}, {"beat": 18, "midi": 62, "beats": 2}, {"beat": 18, "drum": "hat"},
+    {"beat": 19, "drum": "hat"}, {"beat": 20, "midi": 48, "beats": 4}, {"beat": 20, "drum": "kick"}, {"beat": 22, "midi": 55, "beats": 2},
+    {"beat": 22, "midi": 60, "beats": 2}, {"beat": 22, "midi": 64, "beats": 2}, {"beat": 22, "drum": "hat"}, {"beat": 23, "drum": "hat"},
+    {"beat": 24, "midi": 55, "beats": 2}, {"beat": 24, "midi": 60, "beats": 2}, {"beat": 24, "midi": 64, "beats": 2}, {"beat": 24, "drum": "hat"},
+    {"beat": 25, "drum": "hat"}, {"beat": 26, "midi": 48, "beats": 4}, {"beat": 26, "drum": "kick"}, {"beat": 28, "midi": 55, "beats": 2},
+    {"beat": 28, "midi": 60, "beats": 2}, {"beat": 28, "midi": 64, "beats": 2}, {"beat": 28, "drum": "hat"}, {"beat": 29, "drum": "hat"},
+    {"beat": 30, "midi": 55, "beats": 2}, {"beat": 30, "midi": 60, "beats": 2}, {"beat": 30, "midi": 64, "beats": 2}, {"beat": 30, "drum": "hat"},
+    {"beat": 31, "drum": "hat"}, {"beat": 32, "midi": 41, "beats": 4}, {"beat": 32, "drum": "kick"}, {"beat": 34, "midi": 57, "beats": 2},
+    {"beat": 34, "midi": 60, "beats": 2}, {"beat": 34, "midi": 65, "beats": 2}, {"beat": 34, "drum": "hat"}, {"beat": 35, "drum": "hat"},
+    {"beat": 36, "midi": 57, "beats": 2}, {"beat": 36, "midi": 60, "beats": 2}, {"beat": 36, "midi": 65, "beats": 2}, {"beat": 36, "drum": "hat"},
+    {"beat": 37, "drum": "hat"}, {"beat": 38, "midi": 48, "beats": 4}, {"beat": 38, "drum": "kick"}, {"beat": 40, "midi": 55, "beats": 2},
+    {"beat": 40, "midi": 60, "beats": 2}, {"beat": 40, "midi": 64, "beats": 2}, {"beat": 40, "drum": "hat"}, {"beat": 41, "drum": "hat"},
+    {"beat": 42, "midi": 55, "beats": 2}, {"beat": 42, "midi": 60, "beats": 2}, {"beat": 42, "midi": 64, "beats": 2}, {"beat": 42, "drum": "hat"},
+    {"beat": 43, "drum": "hat"}, {"beat": 44, "midi": 48, "beats": 4}, {"beat": 44, "drum": "kick"}, {"beat": 46, "midi": 55, "beats": 2},
+    {"beat": 46, "midi": 60, "beats": 2}, {"beat": 46, "midi": 64, "beats": 2}, {"beat": 46, "drum": "hat"}, {"beat": 47, "drum": "hat"}
   ]
 }

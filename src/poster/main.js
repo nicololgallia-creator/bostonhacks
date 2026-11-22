@@ -59,7 +59,7 @@ root.setProperty("--badge-ink", line.badgeInk);
 document.getElementById("badge").textContent = line.letter;
 document.getElementById("line").textContent = line.name;
 document.getElementById("car").textContent = `Car ${train.car}`;
-document.title = `T Tiles poster: ${line.name}, car ${train.car}`;
+document.title = `TTiles poster: ${line.name}, car ${train.car}`;
 
 const { href, problem } = target();
 const qr = document.getElementById("qr");

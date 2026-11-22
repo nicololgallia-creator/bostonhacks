@@ -9,8 +9,10 @@ import look from "./look.js";
 import board from "./board.js";
 import share from "./share.js";
 import again from "./again.js";
+import scan from "./scan.js";
 
-export const SCREENS = [stops, song, seats, look, board, share, again];
+export const SCREENS = [stops, song, seats, look, board, share, again, scan];
 export const FIRST = "stops"; // where the flow starts
+export const LANDING = "scan"; // where an app opened with no room and no train starts: the code reader
 // A screen with `lands: true` (the leaderboard) joins the flow when a game puts the person there; see wanted() in main.js.
-export const LIVE = { countdown: "look", playing: "look", paused: "look", results: "board" };
+export const LIVE = { warmup: "look", countdown: "look", playing: "look", paused: "look", results: "board" };

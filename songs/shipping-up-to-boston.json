@@ -22,8 +22,11 @@
     {"beat": 206, "midi": 77, "beats": 1}, {"beat": 210, "midi": 77, "beats": 1}, {"beat": 213, "midi": 74, "beats": 1}
   ],
   "backing": [
+    {"beat": -16, "drum": "click"}, {"beat": -12, "drum": "tick"}, {"beat": -8, "drum": "tick"}, {"beat": -4, "drum": "tick"},
     {"beat": 0, "midi": 26, "beats": 2}, {"beat": 0, "drum": "kick"}, {"beat": 2, "midi": 26, "beats": 2}, {"beat": 2, "drum": "kick"},
+    {"beat": 4, "midi": 57, "beats": 4}, {"beat": 4, "midi": 62, "beats": 4}, {"beat": 4, "midi": 65, "beats": 4}, {"beat": 8, "midi": 45, "beats": 8},
     {"beat": 12, "midi": 26, "beats": 2}, {"beat": 12, "drum": "kick"}, {"beat": 14, "midi": 26, "beats": 1}, {"beat": 14, "drum": "kick"},
+    {"beat": 16, "midi": 38, "beats": 8}, {"beat": 20, "midi": 57, "beats": 4}, {"beat": 20, "midi": 62, "beats": 4}, {"beat": 20, "midi": 65, "beats": 4},
     {"beat": 24, "midi": 26, "beats": 2}, {"beat": 24, "midi": 62, "beats": 2}, {"beat": 24, "drum": "kick"}, {"beat": 24, "drum": "snare"},
     {"beat": 26, "midi": 26, "beats": 2}, {"beat": 26, "midi": 60, "beats": 1}, {"beat": 26, "drum": "kick"}, {"beat": 26, "drum": "snare"},
     {"beat": 27, "midi": 62, "beats": 2}, {"beat": 27, "drum": "snare"}, {"beat": 29, "midi": 60, "beats": 1}, {"beat": 30, "midi": 62, "beats": 1},

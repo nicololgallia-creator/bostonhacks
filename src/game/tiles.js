@@ -1,11 +1,14 @@
-﻿// The floor in the falling-tiles look (first drawn by Zohayb, refined in our style): black tiles the width of a lane
+// The floor in the falling-tiles look (first drawn by Zohayb, refined in our style): black tiles the width of a lane
 // slide toward the players on a field the colour of the line the train is on. Each seat's lane is drawn at that
 // seat's pad, so the lanes sit at the players' feet. A lone player's pad is two lanes, one for each foot.
 // Same call as render.js: createRenderer(canvas) returns draw(view). Every screen is drawn here: the lobby, the
 // countdown, the song's title, playing, paused and the results. Flat shapes only, no shadowBlur, nothing built per frame.
-import { HIT_V, ZONE_V } from "./engine.js";
-import { INK, WHITE, GOLD, themeFor, seatOf, loadFonts, createKit, easeOut, easeIn, spring } from "./floor-look.js";
-import { createScreens, drawBadge, drawLaneZone, laneGap, HUD_BOTTOM } from "./floor-screens.js";
+import { HIT_V } from "./engine.js";
+import { INK, WHITE, GOLD, themeFor, seatOf, isDuel, loadFonts, createKit, easeOut, easeIn, spring } from "./floor-look.js";
+import { createScreens, drawBadge, drawLaneZone, drawSoundBanner, litLanes } from "./floor-screens.js";
+import { createWarmup } from "./floor-warmup.js";
+import { createDuel } from "./floor-duel.js";
+import { createFloorFx, padGeom } from "./floor-fx.js";
 
 const TAP_H = 0.2; // a tap tile's length, as a share of its pad's length
 const GAP_V = 0.012; // the field left between two tiles that follow each other in a lane
@@ -20,6 +23,11 @@ export function createRenderer(canvas) {
   const kit = createKit(canvas);
   const { ctx } = kit;
   const screens = createScreens(kit);
+  const warm = createWarmup(kit);
+  const duel = createDuel(kit);
+  const fx = createFloorFx(kit);
+  const G = {}; // the pad being drawn
+  const lg = {}; // the lane being drawn: x, w, top, yLine, bottom
   const hitAt = new Float64Array(LANES).fill(-1e9); // when a lane last scored
   const missAt = new Float64Array(LANES).fill(-1e9);
   const wordAt = new Float64Array(LANES).fill(-1e9);
@@ -29,10 +37,11 @@ export function createRenderer(canvas) {
   let wordW = [0, 0, 0, 0];
   let prevStatus = null;
   let lastNow = 0;
+  let clock = 0; // the game clock: everything on the pads runs on it, and it stands still while paused
 
   function measure() { wordW = WORDS.map((w) => (w ? kit.width(w, kit.H * 0.06) + 44 * kit.U : 0)); }
   loadFonts().then(() => { ready = true; measure(); });
-  window.addEventListener("resize", () => { kit.resize(); if (ready) measure(); });
+  window.addEventListener("resize", () => { kit.resize(); fx.clear(); if (ready) measure(); });
 
   function onEvent(e, now) {
     if (e.type !== "hit" && e.type !== "holdStart" && e.type !== "miss") return;
@@ -62,58 +71,84 @@ export function createRenderer(canvas) {
     }
   }
 
-  // A hold tile is a long slab. Waiting, it shows where to stand with a ring at its front and a line to its end.
-  // While a foot holds it, it fills with the seat's colour and shrinks toward the line.
-  function holdTile(th, seat, tx, tw, yTop, yHead, t) {
+  // A hold tile is a long slab drawn at its full length: a ring at its head (where the foot lands), a line up to a bar at its
+  // tail (where the foot lifts). Waiting, it is ink with the marks in the lane's colour. While a foot holds it, it is filled
+  // with the seat's colour, marked in ink, and shrinks toward the line. A hold that was missed (the foot never landed on it,
+  // or left too soon) goes dull with a cross at its far end, away from the player's number, so it reads as missed at once.
+  // `top` is where the lane starts: the cross is never drawn above it. While a foot holds it, white dashes run up the slab
+  // along both edges: `songMs` moves them at 1.5 times the speed the sleepers go by, `ph` is the pad's length.
+  function holdTile(th, seat, tx, tw, yTop, yHead, t, top, songMs, ph) {
     const { H, U } = kit;
     ctx.beginPath();
     ctx.roundRect(tx, yTop, tw, yHead - yTop, 16 * U);
-    if (t.state === "holding") {
-      ctx.fillStyle = seat.fill;
-      ctx.fill();
-      ctx.lineWidth = 5 * U;
+    const holding = t.state === "holding";
+    ctx.fillStyle = holding ? seat.fill : t.state === "hit" ? th.ghost : t.state === "missed" ? th.dull : INK;
+    ctx.fill();
+    if (holding) { ctx.lineWidth = 5 * U; ctx.strokeStyle = INK; ctx.stroke(); }
+    const cx = tx + tw / 2;
+    const len = yHead - yTop;
+    if (t.state === "missed") {
+      const a = Math.min(tw * 0.14, H * 0.04, len * 0.2);
+      const y = Math.max(yTop, top) + a * 1.6;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 9 * U;
       ctx.strokeStyle = INK;
+      ctx.beginPath();
+      ctx.moveTo(cx - a, y - a); ctx.lineTo(cx + a, y + a);
+      ctx.moveTo(cx + a, y - a); ctx.lineTo(cx - a, y + a);
       ctx.stroke();
       return;
     }
-    ctx.fillStyle = t.state === "hit" ? th.ghost : t.state === "missed" ? th.dull : INK;
-    ctx.fill();
-    if (t.state !== "waiting") return;
-    const r = Math.min(tw * 0.16, H * 0.05);
+    if (!holding && t.state !== "waiting") return;
+    const mark = holding ? INK : th.slot;
+    const r = Math.min(tw * 0.16, H * 0.05, len * 0.2); // a short hold gets a smaller ring, so its tail still shows
     const ringY = yHead - r * 1.9;
+    const barH = Math.min(H * 0.022, len * 0.07);
+    const barY = yTop + Math.min(H * 0.03, len * 0.12);
+    if (holding) {
+      const gap = H * 0.09;
+      const dash = H * 0.05;
+      const dw = tw * 0.1;
+      ctx.lineWidth = 4 * U;
+      ctx.strokeStyle = INK;
+      ctx.fillStyle = WHITE;
+      for (let y = yHead - ((songMs * 0.00045 * ph) % gap); y - dash > yTop + 6 * U; y -= gap) { // one column along each edge, clear of the ring and the bar
+        ctx.beginPath();
+        ctx.roundRect(tx + tw * 0.1, y - dash, dw, dash, dw / 2);
+        ctx.roundRect(tx + tw * 0.9 - dw, y - dash, dw, dash, dw / 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
     ctx.lineWidth = 5 * U;
-    ctx.strokeStyle = th.slot;
+    ctx.strokeStyle = mark;
     ctx.beginPath();
-    ctx.arc(tx + tw / 2, ringY, r, 0, Math.PI * 2);
+    ctx.arc(cx, ringY, r, 0, Math.PI * 2);
     ctx.stroke();
-    if (ringY - r > yTop + r) { ctx.beginPath(); ctx.moveTo(tx + tw / 2, yTop + r); ctx.lineTo(tx + tw / 2, ringY - r); ctx.stroke(); }
+    if (ringY - r > barY + barH) { ctx.beginPath(); ctx.moveTo(cx, barY + barH); ctx.lineTo(cx, ringY - r); ctx.stroke(); }
+    if (barY + barH < ringY - r) { // the tail's bar, once the slab is long enough to hold both
+      ctx.beginPath();
+      ctx.roundRect(tx + tw * 0.27, barY, tw * 0.46, barH, 6 * U);
+      ctx.fillStyle = mark;
+      ctx.fill();
+    }
   }
 
   function drawPad(th, pad, spot, songMs, now) {
-    const { W, H, U } = kit;
-    const r = spot.rect;
-    const px = r.u * W;
-    const pw = r.w * W;
-    const yBase = r.v * H;
-    const ph = r.h * H;
-    const top = Math.max(yBase, H * HUD_BOTTOM);
-    const yLine = yBase + HIT_V * ph;
-    const bottom = yBase + ph;
-    const n = Math.max(1, pad.lanes | 0);
-    const gapX = laneGap(kit, n);
-    const laneW = (pw - gapX * (n - 1)) / n;
+    const { H, U } = kit;
+    const { px, pw, yBase, ph, top, yLine, bottom, n, gapX, laneW } = padGeom(kit, spot.rect, pad.lanes, G);
     const seat = seatOf(th, pad.spotId);
+    const look = fx.look(th, pad.spotId); // the lane's colours at this seat's heat
 
-    let lit = 0; // the lanes with a foot down, one bit each
-    for (let k = 0; k < pad.feet.length; k++) {
-      const f = pad.feet[k];
-      if (f.v >= ZONE_V) lit |= 1 << Math.min(n - 1, Math.floor(f.u * n));
-    }
+    const lit = litLanes(pad.feet, n); // the lanes with a foot down, one bit each
     const sleeperGap = 0.1 * ph;
     const scroll = ((((songMs * HIT_V) / 2500) * ph) % sleeperGap + sleeperGap) % sleeperGap;
 
+    ctx.save();
+    ctx.translate(fx.shake(pad.spotId, now), 0); // one short shake when a streak breaks
     for (let i = 0; i < n; i++) {
       const x = px + i * (laneW + gapX);
+      lg.x = x; lg.w = laneW; lg.top = top; lg.yLine = yLine; lg.bottom = bottom;
       const s = slot(pad.spotId, i);
       const hitAge = now - hitAt[s];
       const missAge = now - missAt[s];
@@ -124,16 +159,17 @@ export function createRenderer(canvas) {
       // The lane: a slot, the foot zone below the hit line, two rails, and sleepers running past with the song.
       ctx.beginPath();
       ctx.roundRect(x, top, laneW, bottom - top, kit.rad);
-      ctx.fillStyle = th.slot;
+      ctx.fillStyle = look.slot;
       ctx.fill();
       ctx.save();
       ctx.clip();
       drawLaneZone(kit, th, x, laneW, yLine, bottom, n, i, lit & (1 << i) ? seat.fill : null, false);
-      ctx.fillStyle = th.sleeper;
+      ctx.fillStyle = look.sleeper;
       for (let y = top - sleeperGap + scroll; y < yLine; y += sleeperGap) ctx.fillRect(x + 10 * U, y, laneW - 20 * U, 6 * U);
-      ctx.fillStyle = th.rail;
-      ctx.fillRect(x + 12 * U, top, 5 * U, yLine - top);
-      ctx.fillRect(x + laneW - 17 * U, top, 5 * U, yLine - top);
+      ctx.fillStyle = look.rail;
+      ctx.fillRect(x + 12 * U, top, look.railW * U, yLine - top);
+      ctx.fillRect(x + laneW - (12 + look.railW) * U, top, look.railW * U, yLine - top);
+      fx.laneBehind(pad.spotId, i, lg, now); // the heat's sweep and the points flying up this lane
 
       // Tiles, far ones first. A tile never runs into the one behind it: it is cut short so the lane shows between them.
       // The engine lists tiles in the order of their notes, so the last in the list is the farthest.
@@ -150,7 +186,7 @@ export function createRenderer(canvas) {
         const yTop = yBase + tail * ph;
         const yHead = yBase + head * ph;
         if (yTop > bottom || yHead < top || yHead - yTop < 2) continue;
-        if (isHold) holdTile(th, seat, tx, tw, yTop, yHead, t);
+        if (isHold) holdTile(th, seat, tx, tw, yTop, yHead, t, top, songMs, ph);
         else tapTile(th, tx, tw, yTop, yHead, t, t.state === "hit" && hitAge < SQUASH_MS && Math.abs(t.v - HIT_V) < 0.12 ? Math.sin((Math.PI * hitAge) / SQUASH_MS) : 0);
       }
 
@@ -160,6 +196,7 @@ export function createRenderer(canvas) {
       if (hitAge < FLASH_MS) { ctx.globalAlpha = 0.9 * (1 - hitAge / FLASH_MS); ctx.fillStyle = WHITE; ctx.fillRect(x, yLine, laneW, bottom - yLine); }
       else if (missAge < FLASH_MS) { ctx.globalAlpha = 0.4 * (1 - missAge / FLASH_MS); ctx.fillStyle = INK; ctx.fillRect(x, yLine, laneW, bottom - yLine); }
       ctx.globalAlpha = 1;
+      fx.laneFront(pad.spotId, i, lg, now); // a together tile's gold and a finished hold's beat
       ctx.restore();
 
       // What the floor made of the last step in this lane: a word on a plate above the line.
@@ -178,35 +215,57 @@ export function createRenderer(canvas) {
 
     // Whose feet these are: the player's number among the footprints, in the seat's colour.
     drawBadge(kit, th, pad.spotId, px + pw / 2, (yLine + bottom) / 2 + 4 * U, false);
+    fx.stamp(pad.spotId, G, now); // the multiplier, when a streak steps up
+    ctx.restore();
 
     // The floor sees each foot that is down: a ring in the seat's colour, where the foot is.
     for (let k = 0; k < pad.feet.length; k++) {
       const f = pad.feet[k];
-      const fx = px + f.u * pw;
-      const fy = yBase + f.v * ph;
-      kit.disc(fx, fy, H * 0.034, WHITE);
-      kit.disc(fx, fy, H * 0.02, seat.fill);
+      const footX = px + f.u * pw;
+      const footY = yBase + f.v * ph;
+      kit.disc(footX, footY, H * 0.034, WHITE);
+      kit.disc(footX, footY, H * 0.02, seat.fill);
     }
   }
 
-  // A seat nobody has taken: its slot, with the light turned down.
-  function drawOpen(th, spot) {
-    const { W, H, U } = kit;
-    const r = spot.rect;
-    const top = Math.max(r.v * H, H * HUD_BOTTOM);
-    ctx.beginPath();
-    ctx.roundRect(r.u * W, top, r.w * W, (r.v + r.h) * H - top, kit.rad);
-    ctx.fillStyle = th.slotOpen;
-    ctx.fill();
-    kit.text(`Seat ${spot.id}`, (r.u + r.w / 2) * W, (r.v + r.h * 0.6) * H, H * 0.06, th.quiet, true, "center", r.w * W - 20 * U);
+  // The screen of one status. Only the seats that are taken have a pad, each where its pad really is; a free seat is not drawn.
+  // `now` is the wall clock, `game` the game clock that stands still in a pause. `stale` follows a long gap, such as a hidden tab.
+  function paint(th, view, now, dt, game, stale) {
+    const { status, layout, pads, songMs, song, events } = view;
+    if (status === "lobby") return screens.lobby(th, view, now);
+    if (status === "results") return screens.results(th, view, now);
+    if (status === "warmup" || (status === "paused" && view.warmup)) { // a pause that began in the warm-up keeps drawing it
+      warm.draw(th, view, now, status === "paused");
+      if (status === "paused") screens.paused(now);
+      return;
+    }
+    if (!song || songMs == null) return;
+
+    for (let i = 0; i < events.length; i++) onEvent(events[i], game);
+    fx.ingest(view, game, stale);
+    fx.behind(game);
+    screens.clock(th, view, now);
+    fx.hud(); // points flying to the score pass under its digits
+    screens.score(th, view, now, dt, fx.pendTeam);
+    for (let i = 0; i < pads.length; i++) {
+      const spot = layout.spots.find((s) => s.id === pads[i].spotId);
+      if (spot) drawPad(th, pads[i], spot, songMs, game);
+    }
+    if (isDuel(view)) duel.plates(th, view, game, dt, fx.pend);
+    fx.front(game);
+    screens.title(th, song, songMs);
+    if (status === "countdown") screens.countdown(songMs);
+    else if (status === "paused") screens.paused(now);
   }
 
-  // view: { status, layout, pads: [{ spotId, lanes, tiles, feet }], players, team, songMs, song, transit, train, events, qr, qrNote }
+  // view: { status, mode, winner, warmup, soundLocked, layout, pads: [{ spotId, lanes, tiles, feet }], players, team, songMs, song, transit, train, events, qr, qrNote }
   return function draw(view) {
-    const { status, layout, pads, songMs, song, events } = view;
+    const { status } = view;
     const now = performance.now();
-    const dt = Math.min(50, now - lastNow);
+    const gap = now - lastNow;
+    const dt = Math.min(50, gap);
     lastNow = now;
+    if (status !== "paused") clock += Math.min(100, gap); // a hidden tab moves the effects on by one frame, not by the whole gap
     const th = themeFor(view.train?.line ?? "Green-B");
     const { W, H } = kit;
     ctx.globalAlpha = 1;
@@ -217,24 +276,12 @@ export function createRenderer(canvas) {
     if (status !== prevStatus) {
       prevStatus = status;
       screens.enter(status, now);
+      warm.enter(status);
+      duel.enter(status);
+      fx.enter(status);
       if (status === "lobby" || status === "countdown") { hitAt.fill(-1e9); missAt.fill(-1e9); wordAt.fill(-1e9); }
     }
-    if (status === "lobby") return screens.lobby(th, view, now);
-    if (status === "results") return screens.results(th, view, now);
-    if (!song || songMs == null) return;
-
-    for (let i = 0; i < events.length; i++) onEvent(events[i], now);
-    screens.clock(th, view, now);
-    screens.score(th, view, now, dt);
-    for (let i = 0; i < layout.spots.length; i++) {
-      const spot = layout.spots[i];
-      let pad = null;
-      for (let k = 0; k < pads.length; k++) if (pads[k].spotId === spot.id) pad = pads[k];
-      if (pad) drawPad(th, pad, spot, songMs, now);
-      else drawOpen(th, spot);
-    }
-    screens.title(th, song, songMs);
-    if (status === "countdown") screens.countdown(songMs);
-    else if (status === "paused") screens.paused(now);
+    paint(th, view, now, dt, clock, gap > 250);
+    if (view.soundLocked) drawSoundBanner(kit, status, now);
   };
 }

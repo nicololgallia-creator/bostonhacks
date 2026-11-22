@@ -1,7 +1,28 @@
 /* Screen 4: the floor, one pad for each seat. The pad's colour is its seat's colour (--seat, set by seats.js), always shown on its
    name plate; the pad itself is pale when open, tinted and marked when it is yours, hatched when another phone holds it. */
+.seats { gap: 1rem; }
 .seats .top { align-items: flex-start; }
-.seats .mascot-mount { width: 6rem; }
+.seats .mascot-mount { width: 5.25rem; }
+
+/* Team or Duel: two chunky pills side by side, the chosen one in the line's colour with a station dot, and one line under them */
+.mode-pick { display: flex; flex-direction: column; gap: 0.5rem; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; }
+.mode {
+  display: flex; align-items: center; justify-content: center; gap: 0.625rem; min-height: 3.25rem; padding: 0.25rem 1rem; cursor: pointer;
+  background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 2rem; font: 400 1.375rem/1 var(--display); letter-spacing: 0.01em;
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+.mode::before { content: ""; flex: none; width: 0.875rem; height: 0.875rem; border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); transition: background-color 160ms var(--ease-out), transform 260ms var(--ease-pop); }
+.mode[aria-checked="true"] { background: var(--c); }
+.mode[aria-checked="true"]::before { background: var(--ink); transform: scale(1.15); }
+.mode:hover:not(:disabled):not([aria-checked="true"]) { background: var(--c-soft); }
+.mode:active:not(:disabled) { transform: scale(0.97); }
+.mode:disabled { cursor: not-allowed; opacity: 0.55; }
+.mode-note { min-height: 1.35em; text-align: center; font-size: 0.9375rem; font-weight: 800; line-height: 1.35; color: var(--ink-2); }
+
+/* what the taken seats make in a duel */
+.match { align-self: center; padding: 0.125rem 1.25rem; background: var(--butter); border: var(--stroke) solid var(--ink); border-radius: 1.5rem; font: 400 1.75rem/1.3 var(--display); letter-spacing: 0.02em; animation: tag-pop 420ms var(--ease-pop) both; }
+.match[hidden] { display: none; }
 
 .floor { position: relative; aspect-ratio: 330 / 220; background: var(--c-pale); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; }
 .floor-in { position: absolute; inset: 0; }

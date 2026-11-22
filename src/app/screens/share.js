@@ -3,7 +3,7 @@
 // is "Save image". There is no button for a thing this phone cannot do. The X skips.
 import "./after.css";
 import { h, svg, button, skeleton, failure } from "../parts.js";
-import { lastResults, APP_NAME } from "../after.js";
+import { lastResults, APP_NAME, matchup } from "../after.js";
 import { makeStatsImage } from "../stats-image.js";
 
 const X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>';
@@ -48,16 +48,22 @@ export default {
     function show({ blob, url: href }) {
       const file = new File([blob], FILE_NAME, { type: "image/png" });
       let mode = modeFor(file);
+      const duel = kept.mode === "versus" && kept.players.length > 1;
+      const summary = duel
+        ? `${matchup(kept.players.length)} on ${kept.song.title}: ${kept.winner ? `Player ${kept.winner.spotId} won.` : "a tie."}`
+        : `Team score ${kept.team.score.toLocaleString("en-US")} on ${kept.song.title}.`;
       const img = h("img", "stats");
       img.src = href;
-      img.alt = `Your game: team score ${kept.team.score.toLocaleString("en-US")}${kept.team.grade ? `, grade ${kept.team.grade}` : ""}, on ${kept.song.title}.`;
+      img.alt = duel
+        ? `Your duel, ${matchup(kept.players.length)}, on ${kept.song.title}: ${kept.winner ? `Player ${kept.winner.spotId} won` : "a tie"}.`
+        : `Your game: team score ${kept.team.score.toLocaleString("en-US")}${kept.team.grade ? `, grade ${kept.team.grade}` : ""}, on ${kept.song.title}.`;
       const note = h("p", "share-note");
       note.setAttribute("role", "status");
       const act = button("btn", async () => {
         if (mode === "save") return save(href);
         note.textContent = "";
         try {
-          await navigator.share({ files: [file], title: APP_NAME, text: `Team score ${kept.team.score.toLocaleString("en-US")} on ${kept.song.title}.` });
+          await navigator.share({ files: [file], title: APP_NAME, text: summary });
         } catch (e) {
           if (e.name === "AbortError") return; // the person closed the share sheet
           mode = "save";

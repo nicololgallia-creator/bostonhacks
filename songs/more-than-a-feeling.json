@@ -13,6 +13,7 @@
     {"beat": 344, "midi": 62, "beats": 66}
   ],
   "backing": [
+    {"beat": -32, "drum": "click"}, {"beat": -24, "drum": "tick"}, {"beat": -16, "drum": "tick"}, {"beat": -8, "drum": "tick"},
     {"beat": 0, "drum": "hat"}, {"beat": 2, "midi": 36, "beats": 2}, {"beat": 2, "midi": 48, "beats": 2}, {"beat": 2, "drum": "kick"},
     {"beat": 4, "midi": 40, "beats": 3}, {"beat": 4, "midi": 52, "beats": 3}, {"beat": 4, "drum": "snare"}, {"beat": 4, "drum": "hat"},
     {"beat": 8, "midi": 40, "beats": 6}, {"beat": 8, "midi": 52, "beats": 6}, {"beat": 8, "drum": "kick"}, {"beat": 8, "drum": "hat"},

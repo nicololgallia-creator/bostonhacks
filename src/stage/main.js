@@ -1,6 +1,6 @@
 // The projected game. Phones join, pick seats and start songs over the link; this page is the one
 // source of truth (session.js), draws the floor and plays the sound.
-// Keys: F fullscreen, P pause or resume, S skip, Esc stop, C setup (also when a phone sends calibrate), G the tracking test (?feet=seats; also ?test=1),
+// Keys: F fullscreen, P pause or resume, S skip, W skip the warm-up, Esc stop, C setup (also when a phone sends calibrate), G the tracking test (?feet=seats; also ?test=1),
 // T turns the picture half way round (the projector and camera face the players; saved, also ?facing=1 or ?facing=0).
 // URL options: ?feet=mouse (the default; the whole picture is the field) ?feet=camera (feet from the camera, after setup) or ?feet=seats (seated play: tap in place, one slice of the picture for each seat),
 // ?demo=1 (a guest in every seat, Space starts the songs), ?autostart=1 (with demo, starts at once).
@@ -10,13 +10,15 @@ import { createTrackedFeet } from "../track/tracked.js";
 import { createSeatSource, glowFeet } from "../track/seatsource.js";
 import { HIT_V, TRAVEL_MS } from "../game/engine.js";
 import { createSynth } from "../game/synth.js";
+import { splitParts } from "../game/parts.js"; // AUDIO (music): backedSong below
+import { backingLeft } from "../game/chart.js";
 import { createRenderer } from "../game/render.js";
 import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
 import { openLink, joinHref, stageRoom } from "../link.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
 import { listStops } from "../mbta/api.js";
-import { feetBySpot, makeLayout } from "./layout.js";
+import { feetBySpot, makeLayout, keptLayout } from "./layout.js"; // keptLayout: wave 9 block "seats"
 import { applyKeystone } from "./keystone.js";
 import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
@@ -56,8 +58,10 @@ function saved(key) {
 // The train comes from the address (the poster's QR code leads here), else from the last one saved, else the default.
 // ?seats=1..4 sets the number of seats from the address, for a quick test without the phone or setup.
 const seatsParam = Number(params.get("seats"));
-const session = createSession({ songs, layout: seatsParam >= 1 && seatsParam <= 4 ? makeLayout({ seats: seatsParam }) : saved(LAYOUT_KEY), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
+// ---- wave 9, seats: four seats in a row by default (session.js). ?seats=N and pads moved in setup still win; the 3 even pads an older stage saved on every run are dropped (keptLayout). ----
+const session = createSession({ songs, layout: seatsParam >= 1 && seatsParam <= 4 ? makeLayout({ seats: seatsParam }) : keptLayout(saved(LAYOUT_KEY)), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
 const synth = createSynth();
+window.synth = synth; // AUDIO (music): scripted checks read synth.locked() and synth.scheduled() (tools/music-check.mjs)
 // The falling-tiles floor (first drawn by Zohayb) is the look while a song plays. ?look=pads brings back the old pads.
 const draw = (params.get("look") === "pads" ? createRenderer : createTileRenderer)(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
@@ -80,7 +84,7 @@ const link = openLink((message) => apply(message), () => {}, (up) => {
   if (lanUrl || usePublic()) drawQr();
   else { qr = null; delete canvas.dataset.joinUrl; }
 });
-const LIVE = ["countdown", "playing", "paused"];
+const LIVE = ["warmup", "countdown", "playing", "paused"]; // wave 9: the warm-up is part of a song
 function sendState() {
   const state = session.snapshot(clock());
   link.send(state);
@@ -137,6 +141,21 @@ function nameStop() {
     .catch((err) => console.warn("Could not find the stop's name:", err.message));
 }
 
+// ---- AUDIO (music): the song as the synth gets it. A backing note that became a tile sounds when it is hit, so it is taken out of the
+// backing. Built once for each song, from the same split the session made (the seats on the floor and the mode).
+let backedOf = null; // the song object `backed` was made from
+let backedMs = Infinity; // the song clock at the last call: a clock that went back is a new play
+let backed = null;
+function backedSong(view, mode) {
+  if (view.song !== backedOf || view.songMs < backedMs) {
+    backedOf = view.song;
+    backed = { ...view.song, backing: backingLeft(view.song, splitParts(view.song, view.pads.length, { mode })) };
+  }
+  backedMs = view.songMs;
+  return backed;
+}
+// ---- end AUDIO (music) ----
+
 function stopSound() {
   ringing.forEach((stop) => stop());
   ringing.clear();
@@ -148,7 +167,7 @@ function playSounds(events) {
     const key = `${e.spotId}:${e.lane}`;
     if (e.type === "status") {
       if (e.status !== "playing") stopSound();
-      if (e.status === "countdown") setupHandle?.close(); // a song is starting, so setup gives the floor back
+      if (e.status === "warmup" || e.status === "countdown") setupHandle?.close(); // a song is starting, so setup gives the floor back
       if (e.status === "lobby") findAddress();
       sendState();
     } else if (e.type === "hit") synth.note(e.midi);
@@ -211,12 +230,18 @@ function toggleTrackTest() {
 }
 // ---- end tracktest ----
 
+// ---- tracker-6: while a song is on (warm-up to pause) only the taken seats are tracked, and the warm-up taps set each player's own lift threshold (seatsource.js) ----
+window.feetSource = feetSource; // for a scripted check: lastFrame(), calibration(), detections()
+const trackSeats = () => { feetSource.setActive?.(LIVE.includes(snap.status) ? snap.players.map((p) => p.spotId) : null); feetSource.calibrate?.(snap.status, snap.players); };
+// ---- end tracker-6 ----
+
 let padLanes = {}; // how many lanes each pad had on the last frame, for a seated source
 function frame() {
   const now = clock();
   // A seated source already gives each seat's feet in pad coordinates; the others give field feet that are sorted into pads.
   const seated = !!feetSource.bySpot;
   const read = seated ? null : feetSource.read();
+  if (seated) trackSeats(); // tracker-6
   const byPad = seated ? feetSource.bySpot(trackTest?.lanes() ?? padLanes) : feetBySpot(snap.layout, read);
   trackTest?.frame();
   const fieldFeet = seated ? glowFeet(snap.layout, byPad) : read;
@@ -226,7 +251,7 @@ function frame() {
   const events = session.drain();
   playSounds(events);
   if (snap.settings.volume !== appliedVolume) { appliedVolume = snap.settings.volume; synth.setVolume?.(appliedVolume); }
-  if (view.status === "countdown" || view.status === "playing") synth.backing?.(view.song, view.songMs + session.offsetMs());
+  if (view.status === "countdown" || view.status === "playing") synth.backing?.(backedSong(view, snap.mode), view.songMs + session.offsetMs()); // AUDIO (music)
   if (!trackTest) draw({
     status: view.status,
     layout: snap.layout,
@@ -235,8 +260,10 @@ function frame() {
     songMs: view.songMs,
     song: view.song,
     transit: snap.transit,
+    soundLocked: synth.locked(), // AUDIO (music): true while the browser keeps sound off; any key or click unlocks it
     train: snap.train, // the tiles floor takes the line's colour and names the stop from it
     team: snap.team,
+    mode: snap.mode, winner: snap.winner, warmup: snap.warmup, // wave 9: versus, its winner (results only) and the warm-up (status "warmup")
     feet: fieldFeet,
     events,
     qr,
@@ -246,6 +273,7 @@ function frame() {
 }
 
 function startDemo() {
+  apply({ type: "set", warmup: false }, true); // wave 9: a demo goes straight to the countdown
   apply({ type: "start", songIds: DEMO_SONGS, transit: null }, true);
 }
 
@@ -260,6 +288,7 @@ window.addEventListener("keydown", (e) => {
     else document.documentElement.requestFullscreen();
   } else if (e.code === "KeyP") apply({ type: snap.status === "paused" ? "resume" : "pause" }, true);
   else if (e.code === "KeyS") apply({ type: "skip" }, true);
+  else if (e.code === "KeyW") apply({ type: "skipWarmup" }, true); // wave 9: skip the warm-up
   else if (e.code === "KeyT") {
     // The seats mirror with the picture, and the tracker reads that once at its start: so start again.
     setFacing(!isFacing());

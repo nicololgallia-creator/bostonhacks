@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createTapDetector, TAP_DEFAULTS } from "./taps.js";
+import { createTapDetector, TAP_DEFAULTS, calibrationOf, CALIBRATION } from "./taps.js";
 
 const GROUND = 0.8;
 const LIFT = 0.05; // well past the 0.02 threshold
@@ -425,4 +425,118 @@ test("on a real recording of two people: seat 1 resting alone from 40.7 s makes 
   const taps = [];
   for (const fr of rec.frames) taps.push(...det.update(fr.t, fr.seats.flatMap((s) => s.feet.map((f) => ({ spotId: s.spotId, ...f }))), { 1: 1, 2: 1 }).taps);
   assert.equal(taps.filter((x) => x.spotId === 1 && x.atMs >= 40700 && x.atMs < 42200).length, 0);
+});
+
+// ---- Each player's own threshold: setSeat, reset, lifts and calibrationOf ----
+// Two seats, one lane each, both feet resting at 0.8 and 0.82 (shin 0.2, so the plain threshold is 0.012). `rise(spotId, t)` is how far
+// that seat's left foot is up at time t. Returns the taps and lifts of each seat.
+const twoSeats = (rise, setup) => {
+  const det = createTapDetector();
+  setup?.(det);
+  const taps = { 1: [], 2: [] }, lifts = { 1: [], 2: [] };
+  for (let t = 0; t <= 6000; t += 20) {
+    const feet = [1, 2].flatMap((spotId) => [{ spotId, foot: 0, x: 0.3 + spotId * 0.3, y: 0.8 - rise(spotId, t), shin: 0.2 }, { spotId, foot: 1, x: 0.38 + spotId * 0.3, y: 0.82, shin: 0.2 }]);
+    const r = det.update(t, feet, { 1: 1, 2: 1 });
+    r.taps.forEach((x, i) => { taps[x.spotId].push(x.atMs); lifts[x.spotId].push(r.lifts[i]); });
+  }
+  return { taps, lifts };
+};
+const bobs = (h) => (t) => (t >= 500 && t % 500 >= 200 && t % 500 < 360 ? h : 0); // a 160 ms lift of h every 500 ms
+
+test("lifts: each tap comes with how high the foot rose and how long it was up", () => {
+  const { taps, lifts } = twoSeats((s, t) => (s === 1 ? bobs(0.05)(t) : 0));
+  assert.ok(taps[1].length >= 8);
+  assert.equal(lifts[1].length, taps[1].length);
+  for (const l of lifts[1]) assert.ok(Math.abs(l.peak - 0.05) < 0.004 && l.liftMs >= 120 && l.liftMs <= 200, JSON.stringify(l));
+  assert.equal(taps[2].length, 0);
+});
+
+test("setSeat: a seat's own threshold changes that seat only, null puts it back", () => {
+  const shuffle = (s, t) => bobs(0.02)(t); // both seats make the same small lift of 0.02: over the plain 0.012
+  const plain = twoSeats(shuffle);
+  assert.ok(plain.taps[1].length >= 8 && plain.taps[2].length === plain.taps[1].length);
+  const own = twoSeats(shuffle, (d) => d.setSeat(1, { minLift: 0.03, liftRatio: 0 }));
+  assert.equal(own.taps[1].length, 0, "seat 1 now needs 0.03");
+  assert.deepEqual(own.taps[2], plain.taps[2], "seat 2 is untouched");
+  const back = twoSeats(shuffle, (d) => { d.setSeat(1, { minLift: 0.03, liftRatio: 0 }); d.setSeat(1, null); });
+  assert.deepEqual(back.taps, plain.taps);
+});
+
+test("setSeat: the shake still raises a seat's own threshold", () => {
+  const det = createTapDetector();
+  det.setSeat(1, { minLift: 0.008, liftRatio: 0 });
+  let r;
+  for (let t = 0; t <= 4000; t += 20) r = det.update(t, [{ spotId: 1, foot: 0, x: 0.5, y: 0.8 + (Math.round(t / 20) % 2 ? 0.004 : -0.004), shin: 0.2 }], { 1: 1 });
+  assert.ok(r.debug[0].threshold > 0.02, `threshold ${r.debug[0].threshold} should follow a shake of 0.008 (4 times)`);
+});
+
+test("reset: a seat put back starts clean, with no ground from before, and its own threshold stays", () => {
+  const run = (doReset) => {
+    const det = createTapDetector();
+    det.setSeat(1, { minLift: 0.05, liftRatio: 0 });
+    for (let t = 0; t <= 2000; t += 20) det.update(t, [{ spotId: 1, foot: 0, x: 0.5, y: 0.8, shin: 0.2 }], { 1: 1 });
+    if (doReset) det.reset(1);
+    // the same seat, 20 ms later, with its foot 0.04 higher: another person's resting height
+    const r = det.update(2020, [{ spotId: 1, foot: 0, x: 0.5, y: 0.76, shin: 0.2 }], { 1: 1 });
+    return { ground: r.debug[0].ground, threshold: r.debug[0].threshold };
+  };
+  assert.ok(Math.abs(run(true).ground - 0.76) < 1e-9, "a clean track takes the new height as its ground");
+  assert.ok(run(false).ground > 0.79, "without reset the old ground stands");
+  assert.ok(run(true).threshold >= 0.05, "reset keeps the seat's own options");
+});
+
+test("calibration: a heavy tapper gets a high threshold, a light one a low one, clamped, and fewer than 3 taps keeps the defaults", () => {
+  const same = (peak, n = 5) => Array.from({ length: n }, (_, i) => ({ peak: peak + [-0.004, 0, 0, 0, 0.004][i % 5], liftMs: 200 + i * 10 }));
+  const heavy = calibrationOf(same(0.06)), light = calibrationOf(same(0.025));
+  assert.ok(Math.abs(heavy.minLift - 0.024) < 1e-9 && Math.abs(light.minLift - 0.010) < 1e-9, `${heavy.minLift} ${light.minLift}`);
+  assert.deepEqual(Object.keys(heavy), ["taps", "medianPeak", "medianLiftMs", "minLift"]);
+  assert.equal(heavy.taps, 5); assert.equal(heavy.medianLiftMs, 220);
+  assert.equal(calibrationOf(same(0.2)).minLift, CALIBRATION.ceiling); // 0.08 clamps to 0.03
+  assert.equal(calibrationOf(same(0.01)).minLift, CALIBRATION.floor); // 0.004 clamps to 0.008
+  assert.equal(calibrationOf(same(0.05, 2)), null);
+  assert.equal(calibrationOf([]), null);
+  assert.notEqual(calibrationOf(same(0.05, 3)), null);
+});
+
+test("calibration: a heavy tapper's small shuffles stop reading as taps, a light tapper's real taps are no longer missed", () => {
+  const learn = (peak) => calibrationOf(Array.from({ length: 4 }, () => ({ peak, liftMs: 200 })));
+  // heavy: real taps of 0.06 every 500 ms, and a shuffle of 0.02 (80 ms long, clear of the 150 ms cooldown) between each
+  const heavyMoves = (t) => (t >= 500 && t % 500 >= 100 && t % 500 < 260 ? 0.06 : t >= 500 && t % 500 >= 350 && t % 500 < 430 ? 0.02 : 0);
+  const count = (setup) => twoSeats((s, t) => (s === 1 ? heavyMoves(t) : 0), setup).taps[1].length;
+  const plain = count(), tuned = count((d) => d.setSeat(1, { minLift: learn(0.06).minLift, liftRatio: 0 }));
+  assert.ok(plain >= 2 * 10, `shuffles count as taps by default: ${plain}`);
+  assert.ok(tuned >= 10 && tuned <= 12, `only the real taps once calibrated: ${tuned}`);
+  // light: lifts of 0.0115 (below the plain floor of 0.012, over the 0.010 learned from lifts of 0.025), the shin share small
+  const lightTaps = (setup) => { const det = createTapDetector(); setup?.(det); let n = 0; for (let t = 0; t <= 6000; t += 20) n += det.update(t, [{ spotId: 1, foot: 0, x: 0.5, y: 0.8 - (t >= 500 && t % 500 >= 200 && t % 500 < 360 ? 0.0115 : 0), shin: 0.05 }], { 1: 1 }).taps.length; return n; };
+  assert.equal(lightTaps(), 0, "missed by default");
+  assert.ok(lightTaps((d) => d.setSeat(1, { minLift: learn(0.025).minLift, liftRatio: 0 })) >= 9, "caught once calibrated");
+});
+
+// The same recording as above, calibrated. Each seat's first four taps after 22 s are its warm-up. Measured, not tuned: where the
+// calibration replaces the shin share too ({ minLift, liftRatio: 0 }, what seatsource.js sets) seat 1 is unchanged and seat 2 gains
+// 2 caught taps and 2 false taps at rest, so CALIBRATE_FROM_WARMUP is off. With the shin share kept it changes nothing.
+test("on a real recording of two people, calibrated from each seat's first four taps after 22 s", (t) => {
+  const rec = JSON.parse(readFileSync(new URL("../../qa/seats/real-two-1.json", import.meta.url), "utf8"));
+  const run = (setup) => {
+    const det = createTapDetector();
+    setup?.(det);
+    const taps = [], lifts = [];
+    for (const fr of rec.frames) {
+      const r = det.update(fr.t, fr.seats.flatMap((s) => s.feet.map((f) => ({ spotId: s.spotId, ...f }))), { 1: 1, 2: 1 });
+      taps.push(...r.taps); lifts.push(...r.lifts);
+    }
+    return { taps, lifts };
+  };
+  const n = (taps, id, from, to) => taps.filter((x) => x.spotId === id && x.atMs >= from && x.atMs < to).length;
+  const base = run();
+  const own = [1, 2].map((id) => calibrationOf(base.taps.map((x, i) => [x, base.lifts[i]]).filter(([x]) => x.spotId === id && x.atMs >= 22000).slice(0, 4).map(([, l]) => l)));
+  assert.ok(own.every((c) => c && c.minLift >= 0.012 && c.minLift < 0.014), JSON.stringify(own));
+  const row = (r, id) => `rest ${n(r.taps, id, 5000, 22000)}, caught ${n(r.taps, id, 22000, 39600)}`;
+  const replaced = run((d) => own.forEach((c, i) => d.setSeat(i + 1, { minLift: c.minLift, liftRatio: 0 })));
+  const kept = run((d) => own.forEach((c, i) => d.setSeat(i + 1, { minLift: c.minLift })));
+  t.diagnostic(`defaults: seat 1 ${row(base, 1)}, seat 2 ${row(base, 2)}; shin share replaced: seat 1 ${row(replaced, 1)}, seat 2 ${row(replaced, 2)}; shin share kept: seat 1 ${row(kept, 1)}, seat 2 ${row(kept, 2)}`);
+  assert.deepEqual([n(base.taps, 1, 5000, 22000), n(base.taps, 2, 5000, 22000), n(base.taps, 1, 22000, 39600), n(base.taps, 2, 22000, 39600)], [0, 0, 29, 37]);
+  assert.deepEqual(kept.taps, base.taps, "with the shin share kept the calibration changes nothing here");
+  assert.deepEqual([n(replaced.taps, 1, 5000, 22000), n(replaced.taps, 1, 22000, 39600)], [0, 29]);
+  assert.deepEqual([n(replaced.taps, 2, 5000, 22000), n(replaced.taps, 2, 22000, 39600)], [2, 39]);
 });

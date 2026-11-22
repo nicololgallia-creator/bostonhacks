@@ -1,8 +1,8 @@
 ﻿// The floor's screens that are not the lanes: the clock and score along the top, the countdown, the song's
 // title, the pause, the lobby and the results board. Same look as the lanes (floor-look.js).
 // Every text is at least a twentieth of the picture's height, so it reads from a seat on a dim projector.
-import { HIT_V, TRAVEL_MS, songSeconds } from "./engine.js";
-import { INK, WHITE, GOLD, seatOf, clamp01, easeOut, backOut, spring } from "./floor-look.js";
+import { HIT_V, ZONE_V, TRAVEL_MS, songSeconds } from "./engine.js";
+import { INK, WHITE, GOLD, seatOf, isDuel, matchup, clamp01, easeOut, backOut, spring } from "./floor-look.js";
 
 const clockText = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 const MASCOT_URL = "/mascot/conductor.svg"; // public/mascot/conductor.svg, never redrawn or recoloured
@@ -40,6 +40,25 @@ function drawFoot(kit, cx, cy, s, left, filled, colour) {
 }
 // The gap between the two lanes of a lone player's pad, and the width of one lane.
 export const laneGap = (kit, n) => (n > 1 ? 36 * kit.U : 0);
+
+// The lanes of a pad with a foot down, one bit each. `feet` are in pad coordinates; one in the air is not passed in.
+export function litLanes(feet, n) {
+  let lit = 0;
+  for (let k = 0; k < feet.length; k++) if (feet[k].v >= ZONE_V) lit |= 1 << Math.min(n - 1, Math.floor(feet[k].u * n));
+  return lit;
+}
+
+// Browsers keep sound off until a key or a click. Until then every status carries this, and it is gone the moment sound is on.
+// In the lobby it sits where the train's line is (the QR code must stay clear); in a song it crosses the middle of the picture.
+export function drawSoundBanner(kit, status, now) {
+  const { W, H, U } = kit;
+  const lobby = status === "lobby";
+  const h = H * (lobby ? 0.066 : 0.11);
+  const w = W * 0.9;
+  const cy = H * (lobby ? 0.1445 : 0.5) + Math.sin(now * 0.003) * H * 0.006; // the lobby's one bob clock
+  kit.plate((W - w) / 2, cy - h / 2, w, h, h / 2, GOLD);
+  kit.text("Press any key for sound", W / 2, cy + 2 * U, H * (lobby ? 0.05 : 0.08), INK, true, "center", w - 60 * U);
+}
 
 // A foot zone for one lane, between the hit line and the players' edge: the platform and the footprints that say
 // "your feet go here". A pad with two lanes has one foot in each lane; a pad with one lane has the pair. `lit` fills the
@@ -201,13 +220,27 @@ export function createScreens(kit) {
       }
     },
 
-    // The team's score, big, with the combo beside it. It counts up, and bumps each time it rises.
-    score(th, view, now, dt) {
+    // The team's score, big, with the combo beside it. It counts up, and bumps each time it rises. `pending` is points
+    // still flying toward it: the score takes them when they land.
+    score(th, view, now, dt, pending = 0) {
       const { W, H, U } = kit;
       const { team, players, pads } = view;
+      if (isDuel(view)) { // each player's score is at their own pad (floor-duel.js); the header only names the duel
+        const y = H * 0.148;
+        const label = matchup(players.length);
+        const size = H * 0.1;
+        const tag = kit.width(label, H * 0.055) + 44 * U;
+        const word = kit.width("Duel", size);
+        const x0 = (W - (word + 24 * U + tag)) / 2;
+        const h = H * 0.075;
+        kit.text("Duel", x0, y + 2 * U, size, INK, true, "left");
+        kit.plate(x0 + word + 24 * U, y - h / 2, tag, h, h / 2, GOLD);
+        kit.text(label, x0 + word + 24 * U + tag / 2, y + 3 * U, H * 0.055, INK);
+        return;
+      }
       let combo = 0;
       for (let i = 0; i < players.length; i++) combo = Math.max(combo, players[i].combo);
-      const target = team?.score ?? 0;
+      const target = (team?.score ?? 0) - pending;
       if (target !== lastTarget) { if (target > lastTarget) scoreAt = now; lastTarget = target; }
       shownScore += (target - shownScore) * Math.min(1, dt * 0.012);
       if (Math.abs(target - shownScore) < 1) shownScore = target;
@@ -271,11 +304,22 @@ export function createScreens(kit) {
       // used to pulse in size instead: text sizes step in whole pixels, so it jerked at its own pace beside the mascot.
       const bob = Math.sin(now * 0.003);
       kit.text("Scan to play", W / 2, H * 0.062 + bob * H * 0.006, H * 0.1, INK);
-      if (train) kit.text(`${th.name} to ${train.headsign}, car ${train.car}`, W / 2, H * 0.152, H * 0.052, INK, false, "center", W * 0.92);
+      // One row under the headline: the mode ("Team" or "Duel") on a plate, then where the train is going.
+      const mode = view.mode === "versus" ? "Duel" : "Team";
+      const modeW = kit.width(mode, H * 0.052) + 44 * U;
+      const modeH = H * 0.066;
+      const where = train ? `${th.name} to ${train.headsign}, car ${train.car}` : "";
+      const whereW = train ? Math.min(kit.width(where, H * 0.052, false), W * 0.92 - modeW - 28 * U) : 0;
+      const rowX = (W - (modeW + (train ? 28 * U + whereW : 0))) / 2;
+      if (!view.soundLocked) {
+        kit.plate(rowX, H * 0.1445 - modeH / 2, modeW, modeH, modeH / 2, WHITE);
+        kit.text(mode, rowX + modeW / 2, H * 0.1445 + 2 * U, H * 0.052, INK);
+        if (train) kit.text(where, rowX + modeW + 28 * U, H * 0.1445, H * 0.052, INK, false, "left", whereW);
+      }
 
       const size = H * 0.52;
       const gap = H * 0.08;
-      const mh = H * 0.5;
+      const mh = H * 0.46; // a little smaller than the QR code is tall, so the free seats' "Open" has room under it
       const mw = mh * MASCOT_ASPECT;
       const left = qr && mascot ? (W - (size + gap + mw)) / 2 : (W - size) / 2;
       const qy = H * 0.195;
@@ -308,10 +352,7 @@ export function createScreens(kit) {
           ctx.fillRect(x + k * (laneW + gx), yLine - 4 * U, laneW, 8 * U);
         }
         drawBadge(kit, th, spot.id, x + w / 2, (yLine + yBottom) / 2 + 4 * U, open);
-      }
-      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) { // browsers keep sound off until the page is clicked once
-        kit.text("Click once", W * 0.115, H * 0.4, H * 0.055, INK, true, "center", W * 0.2);
-        kit.text("for sound", W * 0.115, H * 0.47, H * 0.055, INK, true, "center", W * 0.2);
+        if (open) kit.text("Open", x + w / 2, yLine - H * 0.036, H * 0.052, th.quiet, true, "center", w - 20 * U);
       }
     },
 
@@ -320,18 +361,38 @@ export function createScreens(kit) {
       const { W, H, U } = kit;
       const { players, team, song, train, transit } = view;
       const s = (now - enteredAt) / 1000;
-      if (!ranked) ranked = players.map((p) => ({ ...p, total: p.score + p.bonus })).sort((a, b) => b.total - a.total || a.spotId - b.spotId);
-
-      // The top band: the grade, the team's score, the song.
-      const gs = backOut((s - 0.3) / 0.45);
-      if (s > 0.3) {
-        kit.disc(W * 0.11, H * 0.115, H * 0.085 * gs, GOLD);
-        kit.text(team?.grade ?? "-", W * 0.11, H * 0.12, H * 0.11 * gs, INK);
+      const duel = isDuel(view);
+      const { winner } = view;
+      if (!ranked) {
+        ranked = players.map((p) => ({ ...p, total: p.score + p.bonus }));
+        ranked.sort(duel ? (a, b) => a.rank - b.rank || a.spotId - b.spotId : (a, b) => b.total - a.total || a.spotId - b.spotId);
       }
-      kit.text("Team score", W * 0.2, H * 0.075, H * 0.055, INK, false, "left");
-      kit.text(String(Math.round((team?.score ?? 0) * easeOut((s - 0.5) / 1.1))), W * 0.2, H * 0.155, H * 0.1, INK, true, "left");
-      if (song) kit.text(song.title, W * 0.96, H * 0.075, H * 0.06, INK, true, "right", W * 0.5);
-      kit.text(`${team?.hits ?? 0} of ${team?.total ?? 0} hit`, W * 0.96, H * 0.155, H * 0.055, INK, false, "right");
+
+      // The top band. Team: the grade, the team's score, the song. Duel: its name, who played, a plain "Tie" when nobody won, and the song.
+      if (duel) {
+        const tag = kit.width(matchup(players.length), H * 0.055) + 44 * U;
+        const word = kit.width("Duel", H * 0.1);
+        kit.text("Duel", W * 0.06, H * 0.1, H * 0.1, INK, true, "left");
+        kit.plate(W * 0.06 + word + 24 * U, H * 0.1 - H * 0.0375, tag, H * 0.075, H * 0.0375, GOLD);
+        kit.text(matchup(players.length), W * 0.06 + word + 24 * U + tag / 2, H * 0.1 + 3 * U, H * 0.055, INK);
+        if (!winner && s > 0.3) {
+          const k = backOut((s - 0.3) / 0.45);
+          const w = kit.width("Tie", H * 0.09) + 70 * U;
+          kit.plate(W * 0.5 - (w * k) / 2, H * 0.105 - (H * 0.12 * k) / 2, w * k, H * 0.12 * k, H * 0.06 * k, GOLD);
+          kit.text("Tie", W * 0.5, H * 0.11, H * 0.09 * k, INK);
+        }
+        if (song) kit.text(song.title, W * 0.96, H * 0.06, H * 0.055, INK, true, "right", W * 0.3);
+      } else {
+        const gs = backOut((s - 0.3) / 0.45);
+        if (s > 0.3) {
+          kit.disc(W * 0.11, H * 0.115, H * 0.085 * gs, GOLD);
+          kit.text(team?.grade ?? "-", W * 0.11, H * 0.12, H * 0.11 * gs, INK);
+        }
+        kit.text("Team score", W * 0.2, H * 0.075, H * 0.055, INK, false, "left");
+        kit.text(String(Math.round((team?.score ?? 0) * easeOut((s - 0.5) / 1.1))), W * 0.2, H * 0.155, H * 0.1, INK, true, "left");
+        if (song) kit.text(song.title, W * 0.96, H * 0.075, H * 0.06, INK, true, "right", W * 0.5);
+        kit.text(`${team?.hits ?? 0} of ${team?.total ?? 0} hit`, W * 0.96, H * 0.155, H * 0.055, INK, false, "right");
+      }
 
       // The board.
       const gap = H * 0.013;
@@ -354,13 +415,13 @@ export function createScreens(kit) {
         const a = s - (0.5 + (ranked.length - 1 - r) * 0.25); // last place first, the winner last
         if (a < 0) continue;
         const p = ranked[r];
-        const win = r === 0 && p.total > 0 && a > 1.4;
+        const win = a > 1.4 && (duel ? winner?.spotId === p.spotId : r === 0 && p.total > 0);
         const y = by + head + pad + r * (rowH + gap);
         const dx = (1 - easeOut(a / 0.45)) * W * 0.4;
         const mid = y + rowH / 2;
         kit.plate(bx + pad + dx, y, bw - pad * 2, rowH, 20 * U, win ? WHITE : th.board, false);
         const ink = win ? INK : WHITE;
-        kit.text(String(r + 1), bx + 62 * U + dx, mid + 2 * U, H * 0.075, ink);
+        kit.text(String(duel ? p.rank : r + 1), bx + 62 * U + dx, mid + 2 * U, H * 0.075, ink); // in a duel, equal scores share a rank
         drawChip(kit, th, p.spotId, bx + 100 * U + dx + 0.085 * W, mid, W);
         // The score counts up in split-flap tiles.
         const value = String(Math.round(p.total * easeOut((a - 0.25) / 1.1)));
@@ -375,9 +436,9 @@ export function createScreens(kit) {
           ctx.fillRect(tx, mid - 1.5 * U, tw, 3 * U);
           kit.text(ch, tx + tw / 2, mid + 2 * U, H * 0.075, WHITE);
         }
-        if (p.bonus > 0 && a > 1.4) {
+        const label = duel ? (p.rank === 1 ? (winner ? "Winner" : "Tie") : "") : p.bonus > 0 ? `+${p.bonus} ${p.bonusFor ?? ""}`.trim() : ""; // a duel pays no bonus
+        if (label && a > 1.4) {
           const k = 1 + 0.25 * spring(a - 1.4);
-          const label = `+${p.bonus} ${p.bonusFor ?? ""}`.trim();
           const room = bw - 340 * U - len * (tw + 8 * U) - pad * 2 - 90 * U;
           const w = Math.min(room, kit.width(label, H * 0.05, false) + 40 * U);
           const bxr = bx + bw - pad - 28 * U + dx;

@@ -1,0 +1,46 @@
+/* The landing screen: the name, a camera view with a scan frame, and a quiet way to type the code. The camera sits in a thick
+   ink outline like every other card; the frame's corners are butter. Nothing else moves except the sweep line. */
+.scan { gap: 1rem; }
+.scan .top { align-items: flex-start; }
+.scan .mascot-mount { width: 5.25rem; }
+
+.viewfinder { position: relative; aspect-ratio: 5 / 6; max-height: 52dvh; width: 100%; overflow: hidden; background: var(--ink); border: var(--stroke) solid var(--ink); border-radius: 1.75rem; }
+.cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 300ms var(--ease-out); }
+.viewfinder[data-on="live"] .cam, .viewfinder[data-on="hit"] .cam { opacity: 1; }
+.cam-note { position: absolute; inset: 0; display: none; place-items: center; padding: 1.5rem; text-align: center; color: #fff; font-size: 1rem; font-weight: 800; }
+.viewfinder:not([data-on]) .cam-note, .viewfinder[data-on="starting"] .cam-note, .viewfinder[data-on="paused"] .cam-note { display: grid; }
+
+/* the scan frame: four corners in butter, and a line that sweeps down it while the camera is live */
+.frame { position: absolute; inset: 14%; pointer-events: none; }
+.frame i { position: absolute; width: 22%; aspect-ratio: 1; border: 0.375rem solid var(--hit, var(--butter)); transition: border-color 160ms var(--ease-out), transform 300ms var(--ease-pop); }
+.viewfinder[data-on="hit"] .frame { animation: frame-hit 400ms var(--ease-pop) both; }
+@keyframes frame-hit { from { transform: scale(1.12); } to { transform: none; } }
+
+/* a code was read: the line's badge, its name and the car, for a moment */
+.hit { position: absolute; left: 1rem; right: 1rem; bottom: 1rem; display: none; align-items: center; gap: 0.75rem; padding: 0.625rem 1rem 0.625rem 0.625rem; background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 2rem; animation: tag-pop 360ms var(--ease-pop) both; }
+.viewfinder[data-on="hit"] .hit { display: flex; }
+.hit b { display: block; font: 400 1.5rem/1.1 var(--display); }
+.hit small { display: block; font-size: 0.9375rem; font-weight: 800; color: var(--ink-2); }
+.viewfinder[data-on="hit"] .sweep { opacity: 0; animation: none; }
+.frame i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 1.25rem; }
+.frame i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 1.25rem; }
+.frame i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 1.25rem; }
+.frame i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 1.25rem; }
+.sweep { position: absolute; left: 14%; right: 14%; top: 14%; height: 0.25rem; border-radius: 0.125rem; background: var(--butter); opacity: 0; pointer-events: none; }
+.viewfinder[data-on="live"] .sweep { opacity: 0.9; animation: sweep 2.2s var(--ease-in-out) infinite alternate; }
+@keyframes sweep { from { top: 14%; } to { top: calc(86% - 0.25rem); } }
+
+.scan-msg { min-height: 1.4em; text-align: center; font-size: 1rem; font-weight: 800; line-height: 1.4; color: var(--ink-2); }
+.scan-msg:not(:empty) { color: var(--ink); }
+
+/* typing the code */
+.code-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.code-form[hidden] { display: none; }
+.code-label { font-size: 0.9375rem; font-weight: 900; }
+.code-input {
+  width: 100%; min-height: 3.75rem; padding: 0.5rem 1.5rem; background: var(--paper); color: var(--ink);
+  border: var(--stroke) solid var(--ink); border-radius: 2rem; font: 400 1.75rem/1.2 var(--display); letter-spacing: 0.18em; text-transform: uppercase; text-align: center;
+  transition: background-color 160ms var(--ease-out);
+}
+.code-input:hover { background: var(--c-soft); }
+.code-input:focus-visible { background: var(--paper); }

@@ -15,6 +15,7 @@
     {"beat": 888, "midi": 72, "beats": 5}, {"beat": 904, "midi": 71, "beats": 5}, {"beat": 920, "midi": 67, "beats": 5}, {"beat": 928, "midi": 69, "beats": 45}
   ],
   "backing": [
+    {"beat": -32, "drum": "click"}, {"beat": -24, "drum": "tick"}, {"beat": -16, "drum": "tick"}, {"beat": -8, "drum": "tick"},
     {"beat": 0, "midi": 45, "beats": 3}, {"beat": 0, "midi": 38, "beats": 3}, {"beat": 0, "midi": 26, "beats": 4}, {"beat": 8, "midi": 45, "beats": 3},
     {"beat": 8, "midi": 38, "beats": 3}, {"beat": 8, "drum": "hat"}, {"beat": 8, "midi": 26, "beats": 4}, {"beat": 16, "midi": 38, "beats": 3},
     {"beat": 16, "midi": 45, "beats": 3}, {"beat": 16, "midi": 26, "beats": 4}, {"beat": 24, "midi": 45, "beats": 3}, {"beat": 24, "midi": 38, "beats": 3},

@@ -1,15 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createGame, lanesFor, laneOf, songSeconds, multiplierFor, gradeFor, ZONE_V } from "./engine.js";
+import { createGame, lanesFor, laneOf, songSeconds, multiplierFor, gradeFor, maxScore, isHold, ZONE_V, HOLD_MS, HOLD_GRACE_MS } from "./engine.js";
 
 const twinkle = JSON.parse(readFileSync(new URL("../../songs/twinkle.json", import.meta.url), "utf8"));
-// Three tap notes, 120 bpm, so 500 ms apart. On 4 lanes: 60 is lane 0, 64 is lane 2, 67 is lane 3.
-const tiny = { id: "tiny", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 1 }, { beat: 1, midi: 64, beats: 1 }, { beat: 2, midi: 67, beats: 1 }] };
+// Three tap notes, 120 bpm, so 500 ms apart (each note is a quarter beat long: a note of 500 ms or more is a hold). On 4 lanes: 60 is lane 0, 64 is lane 2, 67 is lane 3.
+const tiny = { id: "tiny", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 0.5 }, { beat: 1, midi: 64, beats: 0.5 }, { beat: 2, midi: 67, beats: 0.5 }] };
 // Two taps in lane 0, 400 ms apart, and one note in lane 3.
 const pair = { id: "pair", bpm: 150, notes: [{ beat: 0, midi: 60, beats: 1 }, { beat: 1, midi: 60, beats: 1 }, { beat: 5, midi: 67, beats: 1 }] };
 // A 2 second hold in lane 0 (tail at 2000 ms), then a tap in lane 3.
-const holdSong = { id: "hold", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 4 }, { beat: 5, midi: 64, beats: 1 }] };
+const holdSong = { id: "hold", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 4 }, { beat: 5, midi: 64, beats: 0.5 }] };
 // Sixty taps 400 ms apart, alternating lanes 0 and 3.
 const long = { id: "long", bpm: 150, notes: Array.from({ length: 60 }, (_, i) => ({ beat: i, midi: i % 2 ? 64 : 60, beats: 1 })) };
 
@@ -44,7 +44,7 @@ test("pitch maps to a lane, low on the left, evenly spread", () => {
 });
 
 test("song length counts the last note's own length", () => {
-  assert.equal(songSeconds(tiny), 1.5);
+  assert.equal(songSeconds(tiny), 1.25);
   assert.equal(songSeconds(twinkle), (48 * 60) / 100);
 });
 
@@ -132,7 +132,7 @@ test("a hold held to its end completes with its grade and pays per beat", () => 
 
 test("a hold left after half counts as good and keeps the combo", () => {
   const game = createGame({ song: holdSong, players: 1 });
-  const { r, events } = run(game, -200, 1500, (t) => (t >= -60 && t <= 1000 ? L0 : NONE));
+  const { r, events } = run(game, -200, 1800, (t) => (t >= -60 && t <= 1000 ? L0 : NONE));
   assert.deepEqual(types(events), ["holdStart", "holdEnd"]);
   assert.equal(events[1].grade, "good");
   assert.equal(r.counts.good, 1);
@@ -150,11 +150,12 @@ test("a hold left early is a miss and resets the combo", () => {
   assert.equal(r.tiles.find((x) => x.kind === "hold").state, "missed");
 });
 
-test("a foot already standing on a hold's square at its time starts it as good", () => {
+test("a foot standing still on a hold's square does not start it: the hold is missed", () => {
   const game = createGame({ song: holdSong, players: 1 });
-  const { r, events } = run(game, -600, 200, (t) => (t <= 200 ? L0 : NONE));
-  assert.deepEqual(events.map((e) => [e.type, e.grade]), [["holdStart", "good"]]);
-  assert.equal(r.tiles.find((x) => x.kind === "hold").state, "holding");
+  const { r, events } = run(game, -600, 600, () => L0);
+  assert.deepEqual(types(events), ["miss"]);
+  assert.equal(r.counts.miss, 1);
+  assert.equal(r.tiles.find((x) => x.kind === "hold").state, "missed");
 });
 
 test("a hold nobody starts is a miss", () => {
@@ -232,7 +233,7 @@ test("createGame takes a lane count for one pad, and still takes players", () =>
 });
 
 test("a note with its own lane uses it, a note without one is spread by pitch", () => {
-  const mixed = { id: "mixed", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 1, lane: 1 }, { beat: 1, midi: 64, beats: 1 }, { beat: 2, midi: 67, beats: 1, lane: 0 }] };
+  const mixed = { id: "mixed", bpm: 120, notes: [{ beat: 0, midi: 60, beats: 0.5, lane: 1 }, { beat: 1, midi: 64, beats: 0.5 }, { beat: 2, midi: 67, beats: 0.5, lane: 0 }] };
   const pad = createGame({ song: mixed, lanes: 2 });
   assert.deepEqual(pad.update(0, NONE).tiles.map((t) => t.lane), [1, 1, 0]); // 64 is the middle pitch: laneOf rounds to 1 of 2
   const r = pad.update(0, [{ u: 0.75, v: 0.9 }]); // a foot in lane 1 hits the first tile
@@ -265,24 +266,91 @@ test("a landing after even one frame in the air is an arrival", () => {
   assert.deepEqual(events.map((e) => [e.type, e.midi]), [["hit", 60], ["hit", 60]]);
 });
 
-test("a foot staying down holds a hold tile, and lifting ends it at once", () => {
+test("a foot staying down holds a hold tile, and lifting for good ends it after the grace", () => {
   const full = run(createGame({ song: holdSong, players: 1 }), -200, 2100, (t) => (t >= -60 ? down : NONE));
   assert.deepEqual(full.events.filter((e) => e.lane === 0).map((e) => [e.type, e.grade]), [["holdStart", "perfect"], ["holdEnd", "perfect"]]);
   assert.equal(full.r.score, 100 + 20 * 4);
 
-  // Down until 1100 ms (past half the hold), then in the air: the hold ends on the very next frame, as good.
+  // Down until 1100 ms (past half the hold), then in the air: the hold ends HOLD_GRACE_MS after the foot left, as good.
   const endTime = (after) => {
     const game = createGame({ song: holdSong, players: 1 });
-    for (let t = -200; t <= 1500; t += 20) {
+    for (let t = -200; t <= 2000; t += 20) {
       const feet = t < -60 ? NONE : t <= 1100 ? down : after;
       if (game.update(t, feet).events.some((e) => e.type === "holdEnd")) return t;
     }
   };
-  assert.equal(endTime(up), 1120);
-  assert.ok(endTime(NONE) >= 1100 + 150); // a foot the tracker lost still waits out the flicker time
+  assert.ok(endTime(up) >= 1120 + HOLD_GRACE_MS - 20 && endTime(up) <= 1120 + HOLD_GRACE_MS + 20);
+  assert.ok(endTime(NONE) >= 1100 + 150 + HOLD_GRACE_MS); // a foot the tracker lost waits out the flicker time too
   const game = createGame({ song: holdSong, players: 1 });
-  const { r } = run(game, -200, 1500, (t) => (t < -60 ? NONE : t <= 1100 ? down : up));
+  const { r } = run(game, -200, 2000, (t) => (t < -60 ? NONE : t <= 1100 ? down : up));
   assert.deepEqual([r.counts.good, r.counts.miss, r.combo], [1, 0, 1]);
+});
+
+// Three holds of 1000 ms in lane 0, at 0, 2000 and 4000 ms.
+const threeHolds = { id: "three", bpm: 120, notes: [0, 4, 8].map((beat) => ({ beat, midi: 60, beats: 2 })) };
+
+test("standing still through three holds scores nothing", () => {
+  const { r, events } = run(createGame({ song: threeHolds, lanes: 1 }), -1000, 6000, () => down);
+  assert.equal(r.score, 0);
+  assert.deepEqual([r.counts.perfect, r.counts.good, r.counts.miss], [0, 0, 3]);
+  assert.deepEqual(types(events), ["miss", "miss", "miss"]);
+});
+
+test("lift, land inside the window and stay: the hold is made, with its points", () => {
+  // Down before the song, lifted from -300 ms, lands at 40 ms and stays to 1100 ms.
+  const game = createGame({ song: threeHolds, lanes: 1 });
+  const { r, events } = run(game, -1000, 1500, (t) => (t >= -300 && t < 40 ? up : t < 1100 ? down : NONE));
+  assert.deepEqual(events.map((e) => [e.type, e.grade]), [["holdStart", "perfect"], ["holdEnd", "perfect"]]);
+  assert.equal(r.counts.perfect, 1);
+  assert.equal(r.score, 100 + 20 * 2);
+});
+
+test("land and then lift early: the hold ends early, as it always did", () => {
+  const game = createGame({ song: threeHolds, lanes: 1 });
+  const { r, events } = run(game, -300, 2000, (t) => (t >= 0 && t < 200 ? down : up));
+  assert.deepEqual(types(events), ["holdStart", "holdEnd", "miss"]);
+  assert.deepEqual([r.counts.miss, r.combo], [1, 0]);
+});
+
+test("after a hold the foot is still down: the next tile needs a new lift and landing", () => {
+  const game = createGame({ song: threeHolds, lanes: 1 });
+  // Lands for the first hold and stays down through the second (its window opens at 1700 ms): the second is missed.
+  const { r, events } = run(game, -300, 2400, (t) => (t >= 0 ? down : NONE));
+  assert.deepEqual(events.filter((e) => e.midi === 60).map((e) => e.type), ["holdStart", "holdEnd", "miss"]);
+  assert.deepEqual([r.counts.perfect, r.counts.miss], [1, 1]);
+  // The same, with a lift and a landing at 1900 ms: the second hold starts.
+  const again = run(createGame({ song: threeHolds, lanes: 1 }), -300, 2400, (t) => (t >= 1700 && t < 1900 ? up : t >= 0 ? down : NONE));
+  assert.deepEqual(again.events.filter((e) => e.type === "holdStart").length, 2);
+});
+
+test("a one-lane seat whose other foot steps does not lose its hold, unless the step is longer than the grace", () => {
+  const stepFor = (ms) => run(createGame({ song: threeHolds, lanes: 1 }), -300, 1300, (t) => (t < 0 ? NONE : t >= 400 && t < 400 + ms ? up : down));
+  assert.deepEqual(types(stepFor(HOLD_GRACE_MS - 60).events), ["holdStart", "holdEnd"]);
+  assert.equal(stepFor(HOLD_GRACE_MS - 60).r.score, 100 + 20 * 2);
+  const long = stepFor(HOLD_GRACE_MS + 100);
+  assert.deepEqual(types(long.events), ["holdStart", "holdEnd", "miss"]);
+  assert.equal(long.r.score, 0);
+});
+
+test("a note is a hold at HOLD_MS or longer, unless it says otherwise; maxScore matches a perfect run", () => {
+  assert.equal(HOLD_MS, 500);
+  assert.deepEqual([{ beats: 0.9 }, { beats: 1 }, { beats: 1, hold: false }, { beats: 0.1, hold: true }].map((n) => isHold(n, 120)), [false, true, false, true]);
+  for (const song of [tiny, holdSong, threeHolds, long]) {
+    const game = createGame({ song, players: 1 });
+    const beatMs = 60000 / song.bpm;
+    let last;
+    for (let t = -300; t <= 30000; t += 20) {
+      // A perfect player: lifts before each tile and lands on its time, stays down for a hold, lifts when it ends.
+      const feet = [];
+      song.notes.forEach((n) => {
+        const at = n.beat * beatMs, tail = at + n.beats * beatMs;
+        const u = (laneOf(song, n.midi, 4) + 0.5) / 4;
+        if (t >= at && t < (isHold(n, song.bpm) ? tail : at + 40)) feet.push({ u, v: 0.9, lifted: false });
+      });
+      last = game.update(t, feet);
+    }
+    assert.equal(last.score, maxScore(song), song.id);
+  }
 });
 
 test("feet with lifted: false behave exactly like feet with no lifted field", () => {

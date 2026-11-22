@@ -43,6 +43,43 @@ test("a phone joins, takes two seats, starts a song, and the floor counts down a
   assert.ok(floor.state(t).players.every((p) => p.grade), "every seat has a grade");
 });
 
+test("with the warm-up on, a start goes to the warm-up, the fake feet fill it, and the count follows", () => {
+  const floor = createFakeFloor({ seats: 3, warmup: 4 });
+  floor.tick(0);
+  floor.apply({ type: "join", clientId: "me" }, 0);
+  floor.apply({ type: "claim", clientId: "me", spotId: 1 }, 0);
+  floor.apply({ type: "start", clientId: "me", songIds: ["twinkle"], transit: null }, 0);
+  assert.equal(floor.state(0).status, "warmup");
+  const t = run(floor, 100, 2000);
+  const w = floor.state(t).warmup;
+  assert.ok(w.players[1].taps > 0 && w.players[1].taps < 4, "half done after two seconds");
+  assert.equal(floor.state(run(floor, t, 4000)).status, "countdown");
+});
+
+test("a fake player with two taps leaves the warm-up half done until it times out", () => {
+  const floor = createFakeFloor({ seats: 2, others: [], warmup: 2 });
+  floor.tick(0);
+  floor.apply({ type: "join", clientId: "me" }, 0);
+  floor.apply({ type: "claim", clientId: "me", spotId: 1 }, 0);
+  floor.apply({ type: "start", clientId: "me", songIds: ["twinkle"], transit: null }, 0);
+  const t = run(floor, 100, 8000);
+  assert.deepEqual([floor.state(t).status, floor.state(t).warmup.players[1].taps], ["warmup", 2]);
+});
+
+test("the mode of the lobby follows the address, and a duel with two seats ends with a winner", () => {
+  const floor = createFakeFloor({ seats: 4, others: [], mode: "versus" });
+  floor.tick(0);
+  assert.equal(floor.state(0).mode, "versus");
+  floor.apply({ type: "join", clientId: "me" }, 0);
+  for (const spotId of [2, 4]) floor.apply({ type: "claim", clientId: "me", spotId }, 0);
+  floor.apply({ type: "start", clientId: "me", songIds: ["twinkle"], transit: null }, 0);
+  let t = 0;
+  while (floor.state(t).status !== "results" && t < 120000) t = run(floor, t, 100);
+  const state = floor.state(t);
+  assert.equal(state.mode, "versus");
+  assert.ok(state.winner, "the two seats do not miss the same tiles, so one wins");
+});
+
 test("the other phone keeps its seat for longer than the ten second rule", () => {
   const floor = createFakeFloor({ seats: 3 });
   const t = run(floor, 0, 30000);

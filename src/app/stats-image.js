@@ -2,7 +2,7 @@
 // conductor stands top right (public/mascot/conductor.svg, drawn as the file is, never redrawn or recoloured), then the
 // song with its real cover when the cover can be drawn, the team's score and grade, and a row for each player.
 // A cover that cannot be drawn to a canvas (the cover host not allowing it) is left out, and the title takes its room.
-import { APP_NAME, rank } from "./after.js";
+import { APP_NAME, rank, isTie, matchup } from "./after.js";
 import { lineOf, seatOf, BUTTER } from "./lines.js";
 import { songById } from "../songs/index.js";
 import { coverUrl } from "./covers.js";
@@ -128,18 +128,29 @@ function draw(ctx, { kept, line, train, cover, conductor, myId }) {
   const by = song?.by.split(". ")[0];
   if (by) text(ctx, by, textX, top + 70 + (lines.length - 1) * size * 1.05 + 46, `800 32px ${TEXT}`, INK);
 
-  // the team
+  const rows = rank(kept.players, myId, kept);
+  const duel = kept.mode === "versus" && rows.length > 1;
+
+  // the team, or in a duel who played (1v1, 1v1v1) and who won: no team score and no bonuses
   box(ctx, M, 650, w - 2 * M, 200, 44, PAPER);
-  text(ctx, "Team score", M + 40, 716, `800 34px ${TEXT}`, INK_2);
-  text(ctx, num(kept.team.score), M + 40, 816, `400 110px ${DISPLAY}`);
-  if (kept.team.grade) {
-    text(ctx, "Grade", 810, 780, `800 36px ${TEXT}`, INK_2, "right");
-    circle(ctx, 920, 750, 66, BUTTER);
-    text(ctx, kept.team.grade, 920, 784, `400 92px ${DISPLAY}`, INK, "center");
+  if (duel) {
+    text(ctx, "Duel", M + 40, 716, `800 34px ${TEXT}`, INK_2);
+    text(ctx, isTie(rows, kept) ? "Tie" : matchup(rows.length), M + 40, 816, `400 110px ${DISPLAY}`);
+    if (kept.winner) {
+      text(ctx, "Winner", w - M - 40, 716, `800 34px ${TEXT}`, INK_2, "right");
+      text(ctx, `Player ${kept.winner.spotId}`, w - M - 40, 800, `400 70px ${DISPLAY}`, INK, "right");
+    }
+  } else {
+    text(ctx, "Team score", M + 40, 716, `800 34px ${TEXT}`, INK_2);
+    text(ctx, num(kept.team.score), M + 40, 816, `400 110px ${DISPLAY}`);
+    if (kept.team.grade) {
+      text(ctx, "Grade", 810, 780, `800 36px ${TEXT}`, INK_2, "right");
+      circle(ctx, 920, 750, 66, BUTTER);
+      text(ctx, kept.team.grade, 920, 784, `400 92px ${DISPLAY}`, INK, "center");
+    }
   }
 
   // the players
-  const rows = rank(kept.players, myId);
   const gap = 14;
   const rowH = Math.min(120, (356 - gap * (rows.length - 1)) / rows.length);
   rows.forEach((r, i) => {
@@ -155,9 +166,9 @@ function draw(ctx, { kept, line, train, cover, conductor, myId }) {
     if (twoLines) text(ctx, `Best combo ${r.maxCombo}  ·  ${r.perfects} perfect`, nameX, y + rowH / 2 + 38, `800 28px ${TEXT}`, INK_2);
     let right = w - M - 34;
     text(ctx, num(r.total), right, y + rowH / 2 + 20, `400 60px ${DISPLAY}`, INK, "right");
-    if (r.bonus) {
+    if (r.bonus || r.winner) {
       ctx.font = `400 38px ${DISPLAY}`;
-      const tag = `+${r.bonus}!`;
+      const tag = r.winner ? "Winner" : `+${r.bonus}!`;
       const tw = ctx.measureText(tag).width + 40;
       ctx.font = `400 60px ${DISPLAY}`;
       right -= ctx.measureText(num(r.total)).width + 24 + tw;

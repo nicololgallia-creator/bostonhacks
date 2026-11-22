@@ -8,7 +8,7 @@ import { lineOf, BUTTER } from "./lines.js";
 import { trainFromQuery, trainFromState, sameTrain, DEFAULT_TRAIN } from "./train.js";
 import { rest } from "./parts.js";
 import { playOpening } from "./opening.js";
-import { SCREENS, FIRST, LIVE } from "./screens/index.js";
+import { SCREENS, FIRST, LANDING, LIVE } from "./screens/index.js";
 import { keepResults, setResults } from "./after.js";
 
 const HERE_MS = 3000;       // the stage frees the seats of a phone it has not heard from in 10 s
@@ -37,6 +37,11 @@ const startedAt = Date.now();
 // ---- the train, and the colour it sets ----
 const fromAddress = trainFromQuery(location.search);
 let trainFrom = fromAddress ? "address" : "default";
+// An app opened with no room and no train (typed, or from a home screen) starts at the code reader. A phone's own camera
+// brings a room and a train in the address and never sees it. `mock`, `screen` and `link` are for testing and skip it.
+const query = new URLSearchParams(location.search);
+const landing = query.get("screen") === "scan" || !["room", "line", "dir", "at", "car", "mock", "screen", "link"].some((k) => query.has(k));
+const first = landing ? LANDING : FIRST;
 const memos = new Map();
 const wants = new Set();
 
@@ -146,7 +151,8 @@ function noticeText() {
 }
 function showBanner() {
   let text = "";
-  if (!linkUp) { if (Date.now() - downSince > 1500) text = "Lost the connection to the floor. Trying again."; }
+  if (active?.id === LANDING) text = ""; // the code reader comes before any floor is known
+  else if (!linkUp) { if (Date.now() - downSince > 1500) text = "Lost the connection to the floor. Trying again."; }
   else if (!floorOn()) { if (app.floorGone()) text = "No floor is connected. You can still look at stops and songs."; }
   else text = noticeText();
   if (text) status.firstElementChild.textContent = text;
@@ -219,11 +225,11 @@ function begin() {
   const sent = trainFromState(app.state?.train);
   if (trainFrom === "default" && sent) { app.train = sent; trainFrom = "stage"; }
   paintLine();
-  stack.push(FIRST);
+  stack.push(first);
   history.replaceState({ pp: 1 }, "");
-  render(FIRST);
-  playOpening(app.line, app.train.car, app.train.headsign);
-  if (registry.has(jump) && jump !== FIRST) stack.push(jump); // `?screen=board` opens that screen directly
+  render(first);
+  if (!landing) playOpening(app.line, app.train.car, app.train.headsign); // the reader knows no train yet: no train to pull in
+  if (registry.has(jump) && jump !== first) stack.push(jump); // `?screen=board` opens that screen directly
   sync();
   showBanner();
 }
@@ -237,5 +243,5 @@ const ready = jump && new URLSearchParams(location.search).has("mock")
     for (const spotId of kept.mine) wants.add(spotId); // the seats are asked for when the State shows them free, as after a lock
   })
   : Promise.resolve();
-if (fromAddress) ready.finally(begin);
+if (fromAddress || landing) ready.finally(begin);
 else setTimeout(() => ready.finally(begin), ARRIVE_WAIT_MS);

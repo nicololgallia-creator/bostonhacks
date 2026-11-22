@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeLayout, feetBySpot, asLayout, LANES } from "./layout.js";
+import { makeLayout, feetBySpot, asLayout, keptLayout, LANES, DEFAULT_SEATS } from "./layout.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-3, `${a} is not near ${b}`);
 
@@ -91,4 +91,20 @@ test("a saved layout that still has a posture and 3 or 4 lanes loads as 2 lanes 
   for (const old of [{ posture: "seated", lanes: 3, spots: pads }, { posture: "standing", lanes: 4, spots: pads }]) {
     assert.deepEqual(asLayout(old), { lanes: 2, spots: pads });
   }
+});
+
+test("the default is four seats in a row", () => {
+  assert.equal(DEFAULT_SEATS, 4);
+  assert.deepEqual(makeLayout({ seats: DEFAULT_SEATS }).spots.map((s) => s.id), [1, 2, 3, 4]);
+});
+
+test("keptLayout drops the old automatic 3 pads and keeps a choice: moved pads, or another seat count", () => {
+  const three = makeLayout({ seats: 3 });
+  assert.equal(keptLayout({ ...three, lanes: 1 }), null); // the stage saved the State's layout, with the lanes of the moment
+  assert.equal(keptLayout(JSON.parse(JSON.stringify(three))), null); // and it comes back from storage as text
+  const moved = makeLayout({ seats: 3 });
+  moved.spots[0].rect.u = 0.2;
+  assert.deepEqual(keptLayout(moved), asLayout(moved));
+  for (const seats of [1, 2, 4]) assert.deepEqual(keptLayout(makeLayout({ seats })), makeLayout({ seats }));
+  for (const junk of [null, undefined, "x", {}, { spots: [] }]) assert.equal(keptLayout(junk), null);
 });

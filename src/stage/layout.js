@@ -1,6 +1,8 @@
 // Seats on the field, with no browser calls. Rules are in PLAN.md under "Seats and session" and "Wave 3b".
 // Field coordinates: u 0 (left) to 1 (right), v 0 (far edge) to 1 (the players' edge).
 export const MAX_SEATS = 4;
+// Four seats in a row unless the address (?seats=N) or a layout the setup page saved says otherwise.
+export const DEFAULT_SEATS = 4;
 // A stored layout always has 2 lanes (a lone player's pad). The State's layout.lanes is set by the session from the
 // seats taken (lanesInPad in game/parts.js): 2 for none or one seat, 1 for two or more.
 export const LANES = 2;
@@ -37,7 +39,17 @@ export function asLayout(x) {
   return { lanes: LANES, spots: spots.map(({ id, rect: { u, v, w, h } }) => ({ id, rect: { u, v, w, h } })) };
 }
 
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
+// The layout the stage saved last time, or null when there is none worth keeping. Before 21 Nov the stage saved its
+// own default (3 even pads) on every run, so those untouched pads are not a choice and the default seats win.
+// Pads that were moved in setup, or any other seat count, are kept.
+export function keptLayout(saved) {
+  const clean = asLayout(saved);
+  if (!clean) return null;
+  const old = makeLayout({ seats: 3 }).spots;
+  return JSON.stringify(clean.spots) === JSON.stringify(old) ? null : clean;
+}
+
+const clamp01 =(x) => Math.min(1, Math.max(0, x));
 
 // Field feet in, each spot's feet out in that pad's own coordinates: { [spotId]: [{ u, v }] }.
 // A foot belongs to a pad when it is inside it or within a tenth of the pad's size outside it.

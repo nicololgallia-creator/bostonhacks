@@ -1,18 +1,24 @@
 // Who sits where, the song queue and the game's state, with no browser calls.
 // Rules are in PLAN.md under "Seats and session" and "Wave 3b". A phone holds one or more seats; one engine
 // runs for each taken seat, and every seat plays its share of the song at the same time.
-import { createGame, gradeFor, songSeconds, TRAVEL_MS } from "../game/engine.js";
+import { createGame, gradeFor, songSeconds, TRAVEL_MS, FLICKER_MS } from "../game/engine.js";
 import { splitParts, lanesInPad } from "../game/parts.js";
-import { makeLayout, asLayout, MAX_SEATS } from "./layout.js";
+import { makeLayout, asLayout, MAX_SEATS, DEFAULT_SEATS } from "./layout.js";
 
 export const COUNTDOWN_MS = 3000;
 export const RESULTS_MS = 8000;
+// The warm-up before the first song: every taken seat taps WARM_TAPS times, or WARM_MAX_MS passes, whichever is first.
+export const WARM_TAPS = 4;
+export const WARM_BEAT_MS = 600; // the beat the floor pulses at, counted from startedAtMs
+export const WARM_MAX_MS = 15000;
+const MAX_TAP_LOG = 32; // taps kept in tapAtMs for the tracker
 const NOTICE_MS = 4000; // a refusal is shown this long
 const HERE_MS = 10000; // a player not heard from for this long is removed, but never while a song is on
 const AFTER_SONG_MS = 30000; // after a song a quiet phone keeps its seats this long: it locked itself while its player looked at the floor
-const LIVE = ["countdown", "playing", "paused"];
+const LIVE = ["warmup", "countdown", "playing", "paused"];
 // Commands that change the game: only a phone that has joined may send them (the stage's own keys are trusted).
-const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "calibrate"];
+const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "calibrate", "mode"];
+const modeOf = (x) => (x === "versus" ? "versus" : "team");
 
 const isId = (x) => typeof x === "string" && x.length > 0 && x.length <= 64;
 const isNum = (x) => typeof x === "number" && Number.isFinite(x);
@@ -69,7 +75,7 @@ function cleanTransit(t) {
 export function createSession({ songs, layout, train } = {}) {
   const library = Array.isArray(songs) ? songs : [];
   let where = cleanTrain(train) ?? { ...DEFAULT_TRAIN };
-  let lay = asLayout(layout) ?? makeLayout({ seats: 3 });
+  let lay = asLayout(layout) ?? makeLayout({ seats: DEFAULT_SEATS });
   let status = "lobby";
   let notice = null; // { for, text }
   let noticeAt = 0;
@@ -80,6 +86,11 @@ export function createSession({ songs, layout, train } = {}) {
   let transit = null;
   let engines = new Map(); // spotId -> { game, tiles, stats, done, bonus, bonusFor }
   let songLanes = 2; // lanes in a pad for the song loaded now
+  let chosen = "team"; // the mode last chosen in the lobby
+  let songMode = "team"; // the mode of the song loaded now: versus needs two or more seats, else it runs as team
+  let warmAt = 0; // when the warm-up began (the stage's clock); moves forward by the time spent paused
+  let pausedFrom = null; // "warmup", "countdown" or "playing": where a pause began
+  let warmedKey = null; // the seats (and who holds them) that last finished a warm-up: the same people need no second one
   // The lanes in a pad: the song's own while one is loaded, else what the seats taken in the lobby will get.
   const padLanes = () => (status === "lobby" ? lanesInPad(owner.size) : songLanes);
   // Song time is nowMs - origin: 0 is when the first beat is due at the hit line. A song starts
@@ -88,7 +99,7 @@ export function createSession({ songs, layout, train } = {}) {
   let pausedAt = 0;
   let resultsAt = 0;
   let ready = { camera: false, calibrated: false };
-  const settings = { volume: 0.8, offsetMs: 120 };
+  const settings = { volume: 0.8, offsetMs: 120, warmup: true };
   // A new lag set mid-song waits for the next song: settings.offsetMs is what was asked for, this is in use.
   let appliedOffset = settings.offsetMs;
   let out = []; // events for drain()
@@ -108,8 +119,26 @@ export function createSession({ songs, layout, train } = {}) {
     const total = sum((e) => e.stats.total);
     return { score: sum((e) => e.stats.score + e.bonus), hits, total, grade: all.length && all.every((e) => e.done) ? gradeFor(hits, total) : null };
   }
-  // The song is over: the best of each kind among the seats still playing gets its bonus.
+  // The warm-up is on, or a pause that began in it.
+  const warming = () => status === "warmup" || (status === "paused" && pausedFrom === "warmup");
+  // Versus: 1 is best, equal scores share a rank (1, 1, 3). Empty in team mode.
+  function ranks() {
+    if (songMode !== "versus") return new Map();
+    const scores = [...engines].map(([spotId, e]) => [spotId, e.stats.score + e.bonus]);
+    return new Map(scores.map(([spotId, s]) => [spotId, 1 + scores.filter(([, other]) => other > s).length]));
+  }
+  // The one seat that won a versus song, only once the results show. Null for a tie, team mode, or fewer than two seats left.
+  function winner() {
+    if (status !== "results" || songMode !== "versus" || engines.size < 2) return null;
+    const top = [...ranks()].filter(([, rank]) => rank === 1);
+    if (top.length !== 1) return null;
+    const [spotId] = top[0];
+    return { spotId, score: engines.get(spotId).stats.score };
+  }
+  // The song is over: the best of each kind among the seats still playing gets its bonus. Versus pays none: it would
+  // break "the same top score for everyone".
   function awardBonuses() {
+    if (songMode === "versus") return;
     const seats = [...engines.values()];
     for (const { label, points, value } of BONUSES) {
       const top = Math.max(...seats.map((e) => value(e.stats)));
@@ -142,26 +171,68 @@ export function createSession({ songs, layout, train } = {}) {
     transit = null;
     setStatus("lobby");
   }
-  // Starts the next queued song on every taken seat, or goes back to the lobby when there is none.
-  function loadNext(nowMs) {
+  // Who holds which seat, as one string: the same string means the same people in the same seats.
+  const seatKey = () => [...owner].sort((a, b) => a[0] - b[0]).map(([spotId, id]) => `${spotId}:${id}`).join(",");
+  // Starts the next queued song on every taken seat, or goes back to the lobby when there is none. `warm`: begin with
+  // the warm-up (only the first song after the lobby, see the start handler) instead of the countdown.
+  function loadNext(nowMs, warm = false) {
     const song = queue.shift();
     const seated = [...owner.keys()].sort((a, b) => a - b);
     if (!song || !seated.length) return toLobby();
     current = song;
+    // Versus needs two or more seats; one seat runs as team for this song.
+    songMode = chosen === "versus" && seated.length >= 2 ? "versus" : "team";
     // The taken seats, in seat order, are one keyboard: each plays its own lanes of the song, all at once.
     // The lanes in a pad are fixed for the song: a seat released part way does not change them.
-    const parts = splitParts(song, seated.length);
+    const parts = splitParts(song, seated.length, { mode: songMode });
     songLanes = lanesInPad(seated.length);
     engines = new Map(seated.map((spotId, i) => {
       const game = createGame({ song: parts[i], lanes: songLanes });
-      return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false, bonus: 0, bonusFor: null }];
+      const warmth = warm ? { tapAtMs: [], seen: [], level: null } : null;
+      return [spotId, { game, tiles: [], stats: zeroStats(game.total), done: false, bonus: 0, bonusFor: null, warm: warmth }];
     }));
+    if (!warm) return beginCountdown(nowMs);
+    warmAt = nowMs;
+    setStatus("warmup");
+  }
+  function beginCountdown(nowMs) {
     // The stage's clock runs offsetMs behind the wall clock. A new lag takes over here, and the origin
     // moves by the difference so the song clock does not jump.
     const shift = appliedOffset - settings.offsetMs;
     appliedOffset = settings.offsetMs;
     origin = nowMs + shift + COUNTDOWN_MS + TRAVEL_MS;
     setStatus("countdown");
+  }
+  function endWarmup(nowMs) {
+    warmedKey = seatKey();
+    for (const e of engines.values()) e.warm = null;
+    beginCountdown(nowMs);
+  }
+  // One foot count a frame in, a tap out. An arrival is the number of feet standing in the pad going up; a foot with
+  // `lifted: true` does not stand. As in the engine, a foot that drops out for under FLICKER_MS has not left, so
+  // flicker is not a second tap. The first frame only sets the level: a foot already standing is not a tap.
+  function noteTap(spotId, e, nowMs, feet) {
+    const w = e.warm;
+    const standing = Array.isArray(feet) ? feet.filter((f) => f && !f.lifted).length : 0;
+    w.seen = w.seen.filter((s) => nowMs - s.t <= FLICKER_MS);
+    w.seen.push({ t: nowMs, n: standing });
+    const level = Math.max(...w.seen.map((s) => s.n));
+    if (w.level !== null && level > w.level && w.tapAtMs.length < MAX_TAP_LOG) {
+      w.tapAtMs.push(nowMs);
+      out.push({ type: "warmupTap", spotId, taps: w.tapAtMs.length, atMs: nowMs });
+    }
+    w.level = level;
+  }
+  function warmUp(nowMs, feetBySpot) {
+    for (const [spotId, e] of engines) noteTap(spotId, e, nowMs, feetBySpot?.[spotId]);
+    const unready = [...engines].filter(([, e]) => e.warm.tapAtMs.length < WARM_TAPS);
+    if (!unready.length) return endWarmup(nowMs);
+    if (nowMs - warmAt < WARM_MAX_MS) return;
+    // Out of time: the seats that never got ready play anyway, and their phones are told why. One phone gets its own
+    // notice; with several phones the single notice slot is for everyone.
+    const phoneIds = [...new Set(unready.map(([spotId]) => owner.get(spotId)))];
+    refuse("The floor did not see your taps. Lift your foot higher.", phoneIds.length === 1 ? phoneIds[0] : null, nowMs);
+    endWarmup(nowMs);
   }
 
   // Each handler returns undefined when it accepted the message, a sentence when it refused it, or
@@ -200,7 +271,14 @@ export function createSession({ songs, layout, train } = {}) {
       if (LIVE.includes(status)) return "The seats cannot change while a song is playing.";
       useLayout(makeLayout({ seats }));
     },
-    start({ songIds, transit: sent }, nowMs) {
+    // The mode of the lobby, for the floor and every phone to show. Changed here or by a start that carries one.
+    mode({ mode }) {
+      if (mode !== "team" && mode !== "versus") return false;
+      if (status !== "lobby") return "A song is running. Change the mode when it ends.";
+      chosen = mode;
+    },
+    // `mode` in a start: "versus" is versus, any other value is team, and none keeps what the lobby shows.
+    start({ songIds, transit: sent, mode }, nowMs) {
       const t = cleanTransit(sent);
       if (!Array.isArray(songIds) || !songIds.every(isId) || t === undefined) return false;
       if (status !== "lobby") return "A song is already running. Stop it first.";
@@ -208,17 +286,31 @@ export function createSession({ songs, layout, train } = {}) {
       const found = songIds.map((id) => library.find((s) => s.id === id));
       if (found.includes(undefined)) return "One of those songs is not in the library.";
       if (!owner.size) return "Pick a seat before starting.";
+      if (mode !== undefined) chosen = modeOf(mode);
       queue = found;
       transit = t;
-      loadNext(nowMs);
+      // Warm up first, unless it is off or these same people in these same seats already did (play again).
+      loadNext(nowMs, settings.warmup && seatKey() !== warmedKey);
+    },
+    // A phone that holds a seat, or the stage, ends the warm-up and starts the countdown now.
+    skipWarmup({ clientId }, nowMs, stage) {
+      if (!stage && !isId(clientId)) return false;
+      if (status !== "warmup") return false; // too late or too early: nothing to say
+      if (!stage && !new Set(owner.values()).has(clientId)) return "Take a seat to skip the warm-up.";
+      endWarmup(nowMs);
     },
     pause(_, nowMs) {
-      if (status !== "countdown" && status !== "playing") return "Nothing is playing to pause.";
+      if (status !== "warmup" && status !== "countdown" && status !== "playing") return "Nothing is playing to pause.";
+      pausedFrom = status;
       pausedAt = nowMs;
       setStatus("paused");
     },
     resume(_, nowMs) {
       if (status !== "paused") return "The song is not paused.";
+      if (pausedFrom === "warmup") { // the warm-up clock carries on from where it stopped
+        warmAt += nowMs - pausedAt;
+        return setStatus("warmup");
+      }
       const t = pausedAt - origin;
       origin += nowMs - pausedAt; // song time carries on from where it stopped
       setStatus(t < -TRAVEL_MS ? "countdown" : "playing");
@@ -234,8 +326,9 @@ export function createSession({ songs, layout, train } = {}) {
     calibrate() {
       out.push({ type: "calibrate" });
     },
-    set({ volume, offsetMs }) {
-      if (!isNum(volume) && !isNum(offsetMs)) return false;
+    set({ volume, offsetMs, warmup }) {
+      if (!isNum(volume) && !isNum(offsetMs) && typeof warmup !== "boolean") return false;
+      if (typeof warmup === "boolean") settings.warmup = warmup; // read at the next start
       if (isNum(volume)) settings.volume = Math.min(1, Math.max(0, volume));
       if (isNum(offsetMs)) {
         settings.offsetMs = Math.min(1000, Math.max(-1000, Math.round(offsetMs)));
@@ -244,11 +337,13 @@ export function createSession({ songs, layout, train } = {}) {
     },
   };
 
-  // songMs is the song clock: negative in the lead-in, frozen while paused, null when no song is live.
+  // The song clock runs from the countdown on: not in the warm-up, not in a pause that began there.
+  const clocked = () => LIVE.includes(status) && !warming();
+  // songMs is the song clock: negative in the lead-in, frozen while paused, null when no song is live or in the warm-up.
   const view = (nowMs) => ({
     status,
     pads: [...engines].map(([spotId, e]) => ({ spotId, lanes: e.game.lanes, tiles: e.tiles })),
-    songMs: LIVE.includes(status) ? songTime(nowMs) : null,
+    songMs: clocked() ? songTime(nowMs) : null,
     song: current,
   });
 
@@ -265,7 +360,7 @@ export function createSession({ songs, layout, train } = {}) {
         if (from) refuse("Join before you use the controls.", from, nowMs);
         return;
       }
-      const result = handlers[message.type](message, nowMs);
+      const result = handlers[message.type](message, nowMs, stage);
       if (typeof result === "string") refuse(result, from, nowMs);
       else if (result !== false && from && message.type !== "here" && notice?.for === from) notice = null;
     },
@@ -278,6 +373,7 @@ export function createSession({ songs, layout, train } = {}) {
       if (LIVE.includes(status)) for (const id of phones.keys()) phones.set(id, nowMs + AFTER_SONG_MS - HERE_MS);
       else for (const [id, seen] of phones) if (nowMs - seen > HERE_MS) drop(id);
       if (status === "results" && nowMs >= resultsAt) loadNext(nowMs);
+      else if (status === "warmup") warmUp(nowMs, feetBySpot);
       else if (status === "countdown" || status === "playing") {
         const t = nowMs - origin;
         setStatus(t < -TRAVEL_MS ? "countdown" : "playing");
@@ -299,10 +395,16 @@ export function createSession({ songs, layout, train } = {}) {
 
     // The State message for the phones.
     snapshot(nowMs) {
-      const live = LIVE.includes(status);
+      const rank = ranks();
       return structuredClone({
         type: "state",
         status,
+        mode: status === "lobby" ? chosen : songMode, // a song that runs as team (one seat) says team
+        winner: winner(),
+        warmup: !warming() ? null : {
+          need: WARM_TAPS, beatMs: WARM_BEAT_MS, maxMs: WARM_MAX_MS, startedAtMs: warmAt,
+          players: Object.fromEntries([...engines].map(([spotId, e]) => [spotId, { taps: e.warm.tapAtMs.length, ready: e.warm.tapAtMs.length >= WARM_TAPS, tapAtMs: e.warm.tapAtMs }])),
+        },
         notice: notice && nowMs - noticeAt < NOTICE_MS ? notice : null,
         layout: { ...lay, lanes: padLanes() },
         train: where,
@@ -310,12 +412,14 @@ export function createSession({ songs, layout, train } = {}) {
         // The seat's total for the song is score + bonus.
         players: [...owner].sort((a, b) => a[0] - b[0]).map(([spotId, clientId]) => {
           const e = engines.get(spotId);
-          return { clientId, spotId, ...(e?.stats ?? zeroStats()), bonus: e?.bonus ?? 0, bonusFor: e?.bonusFor ?? null };
+          return { clientId, spotId, ...(e?.stats ?? zeroStats()), bonus: e?.bonus ?? 0, bonusFor: e?.bonusFor ?? null, rank: rank.get(spotId) ?? null };
         }),
         team: teamStats(),
         song: current && summary(current),
         queue: queue.map(summary),
-        secondsLeft: live ? Math.max(0, Math.ceil((songSeconds(current) * 1000 - songTime(nowMs)) / 1000)) : 0,
+        // In the warm-up nothing has begun: the length of the song plus the lead-in the countdown will add, held still.
+        secondsLeft: warming() ? Math.ceil((songSeconds(current) * 1000 + COUNTDOWN_MS + TRAVEL_MS) / 1000)
+          : clocked() ? Math.max(0, Math.ceil((songSeconds(current) * 1000 - songTime(nowMs)) / 1000)) : 0,
         transit,
         ready,
         settings,
@@ -323,7 +427,8 @@ export function createSession({ songs, layout, train } = {}) {
     },
 
     // What happened since the last call, in order: engine events with their spotId,
-    // { type: "status", status } on every status change, and { type: "calibrate" }.
+    // { type: "status", status } on every status change, { type: "warmupTap", spotId, taps, atMs } on each warm-up tap,
+    // and { type: "calibrate" }.
     drain() {
       const events = out;
       out = [];

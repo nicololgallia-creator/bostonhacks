@@ -50,6 +50,11 @@ export function themeFor(lineId) {
 }
 export const seatOf = (theme, spotId) => theme.seats[(((spotId - 1) % 4) + 4) % 4];
 
+// A duel is a versus song with two or more seats. A versus start with one seat runs as team, and the State says so.
+export const isDuel = (view) => view.mode === "versus" && view.players.length >= 2;
+// What a duel is called by its players: "1v1", "1v1v1", "1v1v1v1".
+export const matchup = (players) => Array(Math.max(2, players)).fill(1).join("v");
+
 export const clamp01 = (x) => Math.min(1, Math.max(0, x));
 export const easeOut = (x) => 1 - (1 - clamp01(x)) ** 3;
 export const easeIn = (x) => clamp01(x) ** 3;

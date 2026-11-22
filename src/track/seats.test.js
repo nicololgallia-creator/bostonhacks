@@ -78,3 +78,55 @@ test("names: a foot raised in the air stays its own foot, since height counts as
   const now = nameFeet([{ side: 1, x: 0.35, y: 0.74 }, { side: 0, x: 0.36, y: 0.8 }], prev, 1);
   assert.equal(now.find((f) => f.y === 0.74).foot, 0);
 });
+
+// ---- Only the seats in use run (setActive) ----
+// A seat tracker with a fake camera and fake pose models, to count how many models run on each camera picture.
+import { createSeatFeet } from "./seats.js";
+import { PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+
+async function fakeTracker(seatCount, options = {}) {
+  const models = [];
+  const saved = { create: PoseLandmarker.createFromOptions, files: FilesetResolver.forVisionTasks, fetch: globalThis.fetch, document: globalThis.document };
+  PoseLandmarker.createFromOptions = async () => { const m = { calls: 0, detectForVideo() { m.calls++; return { landmarks: [standing()] }; }, close() {} }; models.push(m); return m; };
+  FilesetResolver.forVisionTasks = async () => ({});
+  globalThis.fetch = async () => ({ ok: true, headers: { get: () => "application/octet-stream" } });
+  globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage() {} }) }) };
+  const video = { tagName: "VIDEO", videoWidth: 640, videoHeight: 480, readyState: 2, currentTime: 0 };
+  const slices = Array.from({ length: seatCount }, (_, i) => ({ spotId: i + 1, x0: i / seatCount, x1: (i + 1) / seatCount }));
+  const tracker = createSeatFeet({ video, slices, ...options });
+  try { await tracker.start(); } finally { PoseLandmarker.createFromOptions = saved.create; FilesetResolver.forVisionTasks = saved.files; globalThis.fetch = saved.fetch; globalThis.document = saved.document; }
+  models.forEach((m) => { m.calls = 0; }); // the start-up check ran each model once
+  const picture = () => { video.currentTime += 1 / 30; return tracker.read(); };
+  return { tracker, models, picture, calls: () => models.map((m) => m.calls) };
+}
+
+test("setActive: with 2 of 4 seats in use, 2 models run on each picture (4 before), and the others are not detected at all", async () => {
+  const { tracker, picture, calls } = await fakeTracker(4);
+  for (let i = 0; i < 3; i++) picture();
+  assert.deepEqual(calls(), [3, 3, 3, 3]);
+  const idleN = tracker.poses()[2].n;
+  tracker.setActive([1, 2]);
+  for (let i = 0; i < 3; i++) picture();
+  assert.deepEqual(calls(), [6, 6, 3, 3]); // seats 3 and 4 ran nothing since
+  assert.equal(tracker.detections(), 12 + 6);
+  const poses = tracker.poses();
+  assert.deepEqual(poses.map((p) => p.active), [true, true, false, false]);
+  assert.deepEqual(poses.map((p) => p.feet.length), [2, 2, 0, 0]);
+  assert.equal(poses[2].n, idleN); // its picture counter did not move
+  assert.deepEqual([...new Set(picture().map((f) => f.spotId))], [1, 2]);
+});
+
+test("setActive: perFrame turns are taken among the seats in use only, null puts every seat back, and an empty list runs nothing", async () => {
+  const { tracker, picture, calls } = await fakeTracker(4, { perFrame: 1 });
+  tracker.setActive([2, 4]);
+  for (let i = 0; i < 4; i++) picture();
+  assert.deepEqual(calls(), [0, 2, 0, 2]);
+  tracker.setActive(null);
+  for (let i = 0; i < 4; i++) picture();
+  assert.deepEqual(calls().map((c, i) => c - [0, 2, 0, 2][i]), [1, 1, 1, 1]);
+  assert.ok(tracker.poses().every((p) => p.active));
+  tracker.setActive([]); // nobody: nothing runs, nothing breaks
+  const before = tracker.detections();
+  picture(); picture();
+  assert.equal(tracker.detections(), before);
+});

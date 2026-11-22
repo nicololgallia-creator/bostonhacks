@@ -119,6 +119,22 @@ async function playWithFeet(stage, spy, until_ms) {
   }
 }
 
+// The warm-up before the count: every taken seat taps until the stage has seen its four taps (or 14 s pass).
+async function warmUpWithFeet(stage, spy) {
+  const [w, h] = [1280, 720];
+  const t0 = Date.now();
+  while (spy.state.status === "warmup" && Date.now() - t0 < 14000) {
+    for (const { spotId } of spy.state.players) {
+      const { rect } = spy.state.layout.spots.find((sp) => sp.id === spotId);
+      await stage.mouse.move((rect.u + rect.w / 2) * w, (rect.v + rect.h * 0.82) * h); // inside the pad's foot square
+      await stage.mouse.down();
+      await sleep(70);
+      await stage.mouse.up();
+      await sleep(180);
+    }
+  }
+}
+
 // ---------- the steps ----------
 
 // 1. The stage opens, shows the lobby, and its QR code holds an address with the train in it.
@@ -173,7 +189,12 @@ async function step3(c) {
   await shot(c.phone, 3, "phone-seats");
   const mark = c.spy.statuses.length;
   await clickButton(c.phone, "Ready!");
-  await until("the stage to count down", () => c.spy.statuses.slice(mark).includes("countdown"), 6000);
+  // The warm-up comes first (since Sat 9 PM): each player taps four times, the floor shows it saw them, then the count.
+  await until("the stage to start the warm-up", () => c.spy.statuses.slice(mark).includes("warmup"), 6000);
+  await shot(c.stage, 3, "stage-warmup");
+  await shot(c.phone, 3, "phone-warmup");
+  await warmUpWithFeet(c.stage, c.spy);
+  await until("the stage to count down", () => c.spy.statuses.slice(mark).includes("countdown"), 8000);
   await shot(c.stage, 3, "stage-countdown");
   await until("the stage to play", () => c.spy.state.status === "playing", 8000);
   const s = c.spy.state;

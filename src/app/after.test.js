@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { keepable, rank, twoSongs, rideLeft } from "./after.js";
+import { keepable, rank, twoSongs, rideLeft, matchup, isTie } from "./after.js";
 import { songs } from "../songs/index.js";
 import { songSeconds } from "../game/engine.js";
 
@@ -26,6 +26,28 @@ test("rows mark the seats of this phone, and carry perfects and best combo", () 
   assert.deepEqual(rows.map((r) => r.mine), [true, false]);
   assert.equal(rows[0].maxCombo, 14);
   assert.equal(rows[0].perfects, 5);
+});
+
+test("a duel ranks by the stage's own rank, marks its winner, and a tie has no winner", () => {
+  const duel = (...scores) => scores.map((score, i) => player(i + 2, score, 0, { rank: 1 + scores.filter((s) => s > score).length }));
+  const kept = { mode: "versus", winner: { spotId: 3, score: 900 } };
+  const rows = rank(duel(400, 900, 400), "c2", kept);
+  assert.deepEqual(rows.map((r) => [r.spotId, r.place, r.winner]), [[3, 1, true], [2, 2, false], [4, 2, false]]);
+  assert.equal(isTie(rows, kept), false);
+  const level = rank(duel(700, 700), "c2", { mode: "versus", winner: null });
+  assert.deepEqual(level.map((r) => [r.spotId, r.place, r.winner]), [[2, 1, false], [3, 1, false]]);
+  assert.equal(isTie(level, { mode: "versus", winner: null }), true);
+  assert.equal(isTie(level, { mode: "team", winner: null }), false);
+});
+
+test("what the taken seats make in a duel", () => {
+  assert.deepEqual([2, 3, 4].map(matchup), ["1v1", "1v1v1", "1v1v1v1"]);
+});
+
+test("the kept copy carries the mode and the winner, and one seat running as team stays team", () => {
+  const state = { status: "results", mode: "versus", winner: { spotId: 2, score: 5 }, song: { id: "twinkle" }, players: [player(1, 10), player(2, 20)], team: { score: 30 }, train: null, transit: null };
+  assert.deepEqual([keepable(state, "c1").mode, keepable(state, "c1").winner], ["versus", { spotId: 2, score: 5 }]);
+  assert.equal(keepable({ ...state, mode: "team", winner: null }, "c1").mode, "team");
 });
 
 test("a finished song is kept only when this phone has a seat in it", () => {

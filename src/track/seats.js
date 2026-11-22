@@ -133,8 +133,11 @@ export function createSeatFeet({ video, slices, model = "lite", perFrame = Infin
   const modelUrl = `/mediapipe/pose_landmarker_${model}.task`;
   const landmarkers = [];
   const canvases = slices.map(() => document.createElement("canvas"));
-  const empty = (i) => ({ spotId: slices[i].spotId, feet: [], landmarks: [], hipX: null, dropped: false, n: 0 });
+  const empty = (i) => ({ spotId: slices[i].spotId, feet: [], landmarks: [], hipX: null, dropped: false, active: true, n: 0 });
   const results = slices.map((_, i) => empty(i));
+  let active = null; // the spot ids whose models run (setActive); null is all of them
+  const isActive = (i) => !active || active.has(slices[i].spotId);
+  let runs = 0; // pose models run so far, one for each seat and camera picture (detections)
   const stamps = slices.map(() => []);
   const lastTs = slices.map(() => 0);
   const places = slices.map(() => [null, null]); // each seat's feet where they were last seen: [{ x, y, t }, ...]
@@ -187,6 +190,7 @@ export function createSeatFeet({ video, slices, model = "lite", perFrame = Infin
     const now = performance.now();
     lastTs[i] = Math.max(now, lastTs[i] + 1); // a landmarker needs rising timestamps
     const [raw] = landmarkers[i].detectForVideo(canvas, lastTs[i]).landmarks;
+    runs++;
     const n = results[i].n + 1;
     if (!raw) {
       results[i] = { ...empty(i), n };
@@ -197,7 +201,7 @@ export function createSeatFeet({ video, slices, model = "lite", perFrame = Infin
       const prev = places[i].map((p) => (p && now - p.t < MEMORY_MS ? p : null));
       const feet = own ? nameFeet(seenFeet(lm, vw, vh), prev, vw / vh).map(({ side, ...f }) => ({ spotId: slice.spotId, ...f })) : [];
       for (const f of feet) places[i][f.foot] = { x: f.x, y: f.y, t: now };
-      results[i] = { spotId: slice.spotId, feet, landmarks: lm, hipX, dropped: !own, n };
+      results[i] = { spotId: slice.spotId, feet, landmarks: lm, hipX, dropped: !own, active: true, n };
     }
     stamps[i] = stamps[i].filter((t) => now - t < 1000).concat(now);
   }
@@ -209,18 +213,32 @@ export function createSeatFeet({ video, slices, model = "lite", perFrame = Infin
       const fresh = isVideo ? video.readyState >= 2 && video.currentTime !== lastTime : vw > 0;
       if (fresh && vw && vh) {
         lastTime = video.currentTime;
-        const count = Math.min(perFrame, slices.length);
-        for (let k = 0; k < count; k++) detect((cursor + k) % slices.length, vw, vh);
-        cursor = (cursor + count) % slices.length;
+        // Only the seats in use run; they take turns when perFrame is less than their number.
+        const running = slices.map((_, i) => i).filter(isActive);
+        const count = Math.min(perFrame, running.length);
+        for (let k = 0; k < count; k++) detect(running[(cursor + k) % running.length], vw, vh);
+        cursor = running.length ? (cursor + count) % running.length : 0;
       }
     }
     return results.flatMap((r) => r.feet);
   }
 
+  // `ids` are the spot ids whose models run (null: all). A seat left out is not looked at: it shows no feet, its `n` stands
+  // still, and it costs no model run. One put back starts with no memory of where its feet were.
+  function setActive(ids) {
+    active = ids ? new Set(ids) : null;
+    slices.forEach((s, i) => {
+      if (!isActive(i)) results[i] = { ...empty(i), active: false, n: results[i].n };
+      else if (!results[i].active) { results[i] = { ...results[i], active: true }; places[i] = [null, null]; }
+    });
+  }
+
   return {
     start,
     read,
-    // Frames a second of each seat's own pose model, one number for each slice.
+    setActive,
+    detections: () => runs,
+    // Frames a second of each seat's own pose model, one number for each slice (0 for a seat that is not running).
     fps: () => stamps.map((s) => s.filter((t) => performance.now() - t < 1000).length),
     // Each seat's last result: every landmark (for the debug dots), where the person's hips are, whether the pose was
     // dropped as a neighbour's, its feet, and a count of how many times the seat has been looked at.

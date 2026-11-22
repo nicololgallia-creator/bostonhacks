@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, freshSeats, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, freshSeats, createCalibrator, createSeatSource, CALIBRATE_FROM_WARMUP, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
 import { readFileSync as readRecording } from "node:fs";
 import { createTapDetector as newTapDetector } from "./taps.js";
 
@@ -108,7 +108,7 @@ test("glow: drawn at the pad's lane for a foot that is down, not for a lifted on
 
 // The whole chain on a made-up seat: a foot rests, lifts, lands, through the tap detector, the swap and the engine.
 test("a bob in place plays a tap tile through the engine", () => {
-  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.5 }] };
+  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.4 }] }; // 0.4 s: a tap. From 0.5 s a note is a hold (HOLD_MS)
   const game = createGame({ song, lanes: 2 });
   const detector = createTapDetector();
   const traces = (t) => { // seat 1, foot 0 rests at y 0.8 and is up 0.06 from 2.5 s to 3.0 s; foot 1 rests
@@ -125,7 +125,7 @@ test("a bob in place plays a tap tile through the engine", () => {
 });
 
 test("a foot that rests on the square the whole song hits nothing", () => {
-  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.5 }] };
+  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.4 }] }; // 0.4 s: a tap. From 0.5 s a note is a hold (HOLD_MS)
   const game = createGame({ song, lanes: 2 });
   const detector = createTapDetector();
   let hits = 0;
@@ -137,7 +137,7 @@ test("a foot that rests on the square the whole song hits nothing", () => {
 });
 
 test("one lane: one foot lifting and landing while the other stays down is an arrival on the one square", () => {
-  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.5 }] };
+  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.4 }] }; // 0.4 s: a tap. From 0.5 s a note is a hold (HOLD_MS)
   const game = createGame({ song, lanes: 1 });
   const detector = createTapDetector();
   const hits = [];
@@ -151,7 +151,7 @@ test("one lane: one foot lifting and landing while the other stays down is an ar
 });
 
 test("one lane with the seat-mode detector: feet that swap names every frame play nothing until one really lifts and lands", () => {
-  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.5 }] };
+  const song = { id: "t", title: "t", by: "t", bpm: 60, notes: [{ beat: 3, midi: 60, beats: 0.4 }] }; // 0.4 s: a tap. From 0.5 s a note is a hold (HOLD_MS)
   const game = createGame({ song, lanes: 1 });
   const detector = createTapDetector();
   const hits = [];
@@ -227,4 +227,131 @@ test("read-out: the lifted map has every seat, true when any of its feet is in t
   assert.equal(r.t, 12.5);
   assert.equal(r.taps[0].x, 0.4);
   assert.equal(r.poses, poses);
+});
+
+// ---- Each player's own calibration from the warm-up (createCalibrator) ----
+// A tap detector stand-in that only remembers setSeat calls: { [spotId]: options | null }.
+const fakeDetector = () => { const own = {}; return { own, setSeat: (id, o) => { own[id] = o; } }; };
+const lifts = (peaks) => peaks.map((peak) => ({ peak, liftMs: 200 }));
+const tapsOf = (spotId, n) => Array.from({ length: n }, (_, i) => ({ spotId, foot: 0, atMs: i * 600 }));
+const people = (...ids) => ids.map((spotId) => ({ spotId, clientId: "phone" + spotId }));
+// One warm-up: seat 1 taps heavily (0.06) four times, seat 2 lightly (0.025) four times, seat 3 only twice.
+function warmup(c, ids = [1, 2, 3]) {
+  c.round("lobby", people(...ids));
+  c.round("warmup", people(...ids));
+  c.record([...tapsOf(1, 4), ...tapsOf(2, 4), ...tapsOf(3, 2)], [...lifts([0.06, 0.06, 0.06, 0.06]), ...lifts([0.025, 0.025, 0.025, 0.025]), ...lifts([0.05, 0.05])]);
+  c.round("countdown", people(...ids));
+}
+
+test("calibration: each seat with 3 or more warm-up taps gets its own numbers, the others keep the defaults", () => {
+  const det = fakeDetector();
+  const c = createCalibrator(() => det, true);
+  warmup(c);
+  const r = c.result();
+  assert.deepEqual(Object.keys(r), ["1", "2"]); // seat 3 made 2 taps
+  assert.ok(Math.abs(r[1].minLift - 0.024) < 1e-9 && Math.abs(r[2].minLift - 0.010) < 1e-9);
+  assert.deepEqual(Object.keys(r[1]), ["taps", "medianPeak", "medianLiftMs", "minLift"]);
+  assert.deepEqual(det.own[1], { minLift: r[1].minLift, liftRatio: 0 });
+  assert.equal(det.own[3], undefined, "seat 3 was never set");
+});
+
+test("calibration: taps outside the warm-up count for nothing, and with apply off the numbers are kept but nothing is set", () => {
+  const det = fakeDetector();
+  const c = createCalibrator(() => det, false);
+  c.round("lobby", people(1));
+  c.record(tapsOf(1, 5), lifts([0.06, 0.06, 0.06, 0.06, 0.06])); // lobby: not recorded
+  c.round("warmup", people(1));
+  c.round("countdown", people(1));
+  assert.deepEqual(c.result(), {}); // a warm-up with no taps
+  warmup(c, [1, 2, 3]);
+  assert.deepEqual(Object.keys(c.result()), ["1", "2"]);
+  assert.deepEqual(det.own, {}, "apply is off: the detector is not touched");
+  assert.equal(CALIBRATE_FROM_WARMUP, false);
+});
+
+test("calibration: it lasts through the song and a play again (the lobby between), and ends for a seat that is let go or changes hands", () => {
+  const det = fakeDetector();
+  const c = createCalibrator(() => det, true);
+  warmup(c);
+  for (const status of ["playing", "paused", "playing", "results", "lobby"]) c.round(status, people(1, 2, 3));
+  assert.deepEqual(Object.keys(c.result()), ["1", "2"]);
+  // seat 1's phone leaves and another takes it: seat 1 is dropped, seat 2 stays
+  c.round("lobby", [{ spotId: 1, clientId: "someone-else" }, ...people(2, 3).slice(0)]);
+  assert.deepEqual(Object.keys(c.result()), ["2"]);
+  assert.equal(det.own[1], null, "the detector is put back on the defaults for seat 1");
+  // seat 2 is released
+  c.round("lobby", people(3));
+  assert.deepEqual(c.result(), {});
+});
+
+test("calibration: a new warm-up starts from the defaults, and a pause in the warm-up does not end it", () => {
+  const det = fakeDetector();
+  const c = createCalibrator(() => det, true);
+  warmup(c);
+  c.round("lobby", people(1, 2, 3));
+  c.round("warmup", people(1, 2, 3));
+  assert.deepEqual(c.result(), {});
+  assert.equal(det.own[1], null);
+  c.record(tapsOf(1, 2), lifts([0.06, 0.06]));
+  c.round("paused", people(1, 2, 3));
+  c.round("warmup", people(1, 2, 3)); // resumed: still the same warm-up
+  c.record(tapsOf(1, 2).map((t) => ({ ...t, atMs: t.atMs + 5000 })), lifts([0.06, 0.06]));
+  c.round("countdown", people(1, 2, 3));
+  assert.equal(c.result()[1].taps, 4);
+});
+
+test("calibration: clear() throws everything away (the seats were turned round)", () => {
+  const det = fakeDetector();
+  const c = createCalibrator(() => det, true);
+  warmup(c);
+  c.clear();
+  assert.deepEqual(c.result(), {});
+});
+
+// ---- Only the seats in play are tracked (setActive), on the source as the stage runs it ----
+// The recording replays on a clock the test moves. At 30 s both seats are tapping.
+test("setActive: a seat left out shows no feet, makes no taps and its picture counter stands still, and a seat put back starts clean", async () => {
+  const rec = JSON.parse(readRecording(new URL("../../qa/seats/real-two-1.json", import.meta.url), "utf8"));
+  const real = { fetch: globalThis.fetch, perf: Object.getOwnPropertyDescriptor(globalThis, "performance") };
+  let clock = 0;
+  globalThis.fetch = async () => ({ ok: true, json: async () => rec });
+  Object.defineProperty(globalThis, "performance", { value: { now: () => clock }, configurable: true, writable: true });
+  try {
+    const source = createSeatSource({ layout: makeLayout({ seats: 2 }), replay: "recording" });
+    await source.start();
+    const lanes = { 1: 1, 2: 1 };
+    const run = (from, to) => { const frames = []; for (clock = from; clock < to; clock += 33) { source.bySpot(lanes); frames.push(source.lastFrame()); } return frames; };
+    const both = run(30000, 33000);
+    assert.ok(both.every((f) => f.poses.every((p) => p.active)));
+    assert.ok(both.some((f) => f.read.some((x) => x.spotId === 2)));
+    assert.ok(both.flatMap((f) => f.taps).some((t) => t.spotId === 2), "seat 2 taps while it is tracked");
+    source.setActive([1]);
+    source.setActive([1]); // again: nothing changes
+    const alone = run(33000, 36000);
+    assert.ok(alone.every((f) => f.poses[1].active === false && f.poses[1].feet.length === 0 && f.poses[1].hipX === null));
+    assert.ok(alone.every((f) => f.read.every((x) => x.spotId === 1) && f.taps.every((t) => t.spotId === 1) && f.debug.every((d) => d.spotId === 1)));
+    assert.ok(alone.some((f) => f.read.length), "seat 1 is still read");
+    assert.ok(alone.every((f) => f.poses[1].n === both.at(-1).poses[1].n), "seat 2's counter did not move");
+    assert.equal(source.detections(), null); // a recording runs no pose model
+    assert.ok(Number.isFinite(source.fps()));
+    // Seat 2 comes back after a gap far shorter than the detector's own 500 ms: its tracks must still start over, so each ground is
+    // where its foot is now (without the reset, a foot in the air would keep the ground it had before).
+    source.setActive(null);
+    const nowBack = run(36000, 36100);
+    assert.ok(nowBack.every((f) => f.poses.every((p) => p.active)));
+    let at = 36100;
+    for (; at < 40000 && !source.lastFrame().lifted[2]; at += 33) run(at, at + 33); // wait for a foot of seat 2 to be in the air
+    assert.ok(source.lastFrame().lifted[2], "seat 2 has a foot in the air");
+    source.setActive([1]);
+    run(at, at + 33);
+    source.setActive(null);
+    const first = run(at + 33, at + 66)[0];
+    const seat2 = first.read.filter((f) => f.spotId === 2);
+    const grounds = first.debug.filter((x) => x.spotId === 2);
+    assert.ok(grounds.length && grounds.every((d) => seat2.some((f) => Math.abs(f.y - d.ground) < 1e-9)), "each ground is where its foot is now");
+    assert.ok(first.lifted[2] === false, "and nothing is lifted from before");
+  } finally {
+    globalThis.fetch = real.fetch;
+    Object.defineProperty(globalThis, "performance", real.perf);
+  }
 });

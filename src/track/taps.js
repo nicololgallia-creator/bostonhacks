@@ -27,6 +27,18 @@ export const TAP_DEFAULTS = {
 // The middle value of a list, not the average: a few big real movements do not drag it.
 const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
 
+// What one player's warm-up taps say about how they tap (seatsource.js sets the tracker to it). `lifts` is [{ peak, liftMs }],
+// one for each tap the detector fired for that seat: how high the foot rose over its ground (a share of the picture's height)
+// and how long it was up. Fewer than minTaps gives null: that seat keeps the defaults. Otherwise { taps, medianPeak,
+// medianLiftMs, minLift }, minLift being `share` of the median peak, kept between `floor` and `ceiling`.
+// All four numbers are guesses (nothing has been checked on a real warm-up).
+export const CALIBRATION = { minTaps: 3, share: 0.4, floor: 0.008, ceiling: 0.03 };
+export function calibrationOf(lifts, c = CALIBRATION) {
+  if (lifts.length < c.minTaps) return null;
+  const medianPeak = median(lifts.map((l) => l.peak));
+  return { taps: lifts.length, medianPeak, medianLiftMs: median(lifts.map((l) => l.liftMs)), minLift: Math.min(c.ceiling, Math.max(c.floor, c.share * medianPeak)) };
+}
+
 export function createTapDetector(options = {}) {
   const o = { ...TAP_DEFAULTS, ...options };
   // One track per foot. Key `${spotId}:${foot}` (a foot with its own lane: the model's name), or `${spotId}:L` / `${spotId}:R`
@@ -36,6 +48,8 @@ export function createTapDetector(options = {}) {
   const tracks = new Map();
   // Per seat with one lane: { gaps: [{ t, g }] (x distance of its two feet), lastTapAt }
   const seats = new Map();
+  // Per seat, its own lift threshold in place of the plain one: { minLift, liftRatio } (setSeat). A seat not in it uses `o`.
+  const seatOptions = new Map();
   let frame = 0;
 
   // Moves one foot's track by one frame. `gate()` gives the object that holds lastTapAt: the track itself, or the seat, so a
@@ -61,10 +75,11 @@ export function createTapDetector(options = {}) {
     // changes little from frame to frame, so it does not count either.
     while (t.diffs.length && t.diffs[0].t < nowMs - o.shakeMs) t.diffs.shift();
     const shake = t.diffs.length >= o.shakeMinSamples ? median(t.diffs.map((d) => d.d)) : 0;
-    const threshold = Math.max(o.liftRatio * (Number.isFinite(f.shin) ? f.shin : 0), o.minLift, o.shakeMultiple * shake);
+    const own = seatOptions.get(f.spotId) ?? o;
+    const threshold = Math.max(own.liftRatio * (Number.isFinite(f.shin) ? f.shin : 0), own.minLift, o.shakeMultiple * shake);
     debug.push({ spotId: f.spotId, foot: key.endsWith(":R") ? 1 : key.endsWith(":L") ? 0 : f.foot, ground: t.ground, threshold, shake });
 
-    const result = { landed: false, tap: false };
+    const result = { landed: false, tap: false, lift: null };
     if (t.lifted && nowMs - t.liftedAt > o.maxLiftMs) {
       // Never came back: a shift to a new resting height.
       t.lifted = false;
@@ -100,6 +115,7 @@ export function createTapDetector(options = {}) {
         t.lifted = false;
         t.above = 0;
         result.landed = true;
+        result.lift = { peak: t.peak, liftMs: nowMs - t.liftedAt };
         const long = nowMs - t.liftedAt >= o.minLiftMs || t.peak > 2 * threshold;
         if (long && nowMs - gate().lastTapAt >= o.cooldownMs) {
           gate().lastTapAt = nowMs;
@@ -132,7 +148,8 @@ export function createTapDetector(options = {}) {
   }
 
   return {
-    // Returns the same feet with `lifted` added, the taps this frame: [{ spotId, foot, atMs }], and `debug`, what each
+    // Returns the same feet with `lifted` added, the taps this frame: [{ spotId, foot, atMs }], `lifts` (for each tap, how the foot
+    // rose: { peak, liftMs }, see calibrationOf), and `debug`, what each
     // track measured this frame: [{ spotId, foot, ground, threshold, shake }] (a seat with one lane: foot 0 is its left track,
     // foot 1 its right).
     // `lanes` is { [spotId]: lanes in that pad }, 2 when a seat is not in it. A seat with one lane tracks each foot on its own,
@@ -142,6 +159,7 @@ export function createTapDetector(options = {}) {
     update(nowMs, feet, lanes = {}) {
       frame++;
       const taps = [];
+      const lifts = []; // lifts[i] is how taps[i] was made: { peak, liftMs }
       const debug = [];
       const bySeat = new Map(); // spotId -> its feet, for the seats with one lane
       const out = [];
@@ -152,7 +170,7 @@ export function createTapDetector(options = {}) {
         }
         const key = `${f.spotId}:${f.foot}`;
         const r = step(nowMs, key, f, () => tracks.get(key), debug);
-        if (r.tap) taps.push({ spotId: f.spotId, foot: f.foot, atMs: nowMs });
+        if (r.tap) { taps.push({ spotId: f.spotId, foot: f.foot, atMs: nowMs }); lifts.push(r.lift); }
         out.push({ ...f, lifted: tracks.get(key).lifted });
       }
       for (const [spotId, fs] of bySeat) {
@@ -162,7 +180,7 @@ export function createTapDetector(options = {}) {
         for (const [f, side] of assign(nowMs, spotId, fs)) {
           const r = step(nowMs, `${spotId}:${side}`, f, () => seat, debug);
           landed ||= r.landed;
-          if (r.tap) taps.push({ spotId, foot: 0, atMs: nowMs });
+          if (r.tap) { taps.push({ spotId, foot: 0, atMs: nowMs }); lifts.push(r.lift); }
         }
         const air = ["L", "R"].some((side) => {
           const t = tracks.get(`${spotId}:${side}`);
@@ -171,7 +189,18 @@ export function createTapDetector(options = {}) {
         const top = fs.reduce((best, f) => (f.y < best.y ? f : best));
         out.push({ ...top, foot: 0, lifted: air && !landed });
       }
-      return { feet: out, taps, debug };
+      return { feet: out, taps, lifts, debug };
+    },
+    // One seat's own lift threshold, in place of the plain floor and the shin share: { minLift, liftRatio } (each falls back to the
+    // options). The shake part of the threshold still applies on top. null puts the seat back on the options.
+    setSeat(spotId, own) {
+      if (own) seatOptions.set(spotId, { minLift: own.minLift ?? o.minLift, liftRatio: own.liftRatio ?? o.liftRatio });
+      else seatOptions.delete(spotId);
+    },
+    // Forgets everything measured for one seat (ground, shake, lifts, gaps), as if it had never been seen. Its own options stay.
+    reset(spotId) {
+      for (const key of [...tracks.keys()]) if (key.startsWith(`${spotId}:`)) tracks.delete(key);
+      seats.delete(spotId);
     },
   };
 }

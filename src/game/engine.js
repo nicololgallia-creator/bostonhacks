@@ -7,9 +7,22 @@ export const ZONE_V = 0.55; // a lane's square runs from here to v = 1
 export const GOOD_MS = 300; // a foot must arrive within this of a tile's time
 export const PERFECT_MS = 120;
 export const FLICKER_MS = 150; // a square counts as empty only after this long with no foot
-export const HOLD_MS = 800; // a note this long or longer is a hold tile
+export const HOLD_MS = 500; // a note this long or longer is a hold tile (unless the note says `hold` itself: parts from chart.js do)
+export const HOLD_GRACE_MS = 400; // a hold survives this long with its square empty: a seat with one lane reports "lifted" while ANY of its feet is in the air, so the free foot stepping must not end a hold
 const POINTS = { perfect: 100, good: 50 };
 const HOLD_POINTS_PER_BEAT = 20;
+
+// A note is a hold when it says so (`hold: true|false`), else when it is long enough.
+export const isHold = (note, bpm) => note.hold ?? (note.beats * 60000) / bpm >= HOLD_MS;
+// What one judged tile adds to the score, with the combo it has just made.
+const pointsFor = (grade, extra, combo) => (POINTS[grade] + extra) * multiplierFor(combo);
+
+// The score of a perfect run through a part ({ bpm, notes }): every tile perfect, holds kept to the end, no miss.
+export function maxScore({ bpm, notes }) {
+  let score = 0;
+  notes.forEach((n, i) => { score += pointsFor("perfect", isHold(n, bpm) ? HOLD_POINTS_PER_BEAT * n.beats : 0, i + 1); });
+  return score;
+}
 
 export function lanesFor(players) {
   return players <= 1 ? 4 : players === 2 ? 6 : 8;
@@ -43,14 +56,15 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
     const ms = n.beats * beatMs;
     return {
       id, lane: n.lane ?? laneOf(song, n.midi, lanes), midi: n.midi, beats: n.beats,
-      at: n.beat * beatMs, tail: n.beat * beatMs + ms, kind: ms >= HOLD_MS ? "hold" : "tap",
+      at: n.beat * beatMs, tail: n.beat * beatMs + ms, kind: isHold(n, song.bpm) ? "hold" : "tap",
       state: "waiting", grade: null,
     };
   });
   const endMs = songSeconds(song) * 1000;
   // Per lane: raw foot counts seen in the last FLICKER_MS, the last time a foot was there, and the
   // steady count (the most feet seen in that span) that arrivals are judged on.
-  const squares = Array.from({ length: lanes }, () => ({ samples: [], lastSeen: -Infinity, count: 0 }));
+  // `emptyAt` is when the count last fell to 0 (null while a foot stands there): a hold waits HOLD_GRACE_MS from it.
+  const squares = Array.from({ length: lanes }, () => ({ samples: [], lastSeen: -Infinity, count: 0, emptyAt: null }));
   const counts = { perfect: 0, good: 0, miss: 0 };
   let score = 0;
   let combo = 0;
@@ -82,7 +96,7 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
         counts[grade]++;
         combo++;
         maxCombo = Math.max(maxCombo, combo);
-        score += (POINTS[grade] + extra) * multiplierFor(combo);
+        score += pointsFor(grade, extra, combo);
       };
       const miss = (t) => { t.state = "missed"; judge(t, "miss"); emit("miss", t, "miss"); };
       const gradeAt = (t) => (Math.abs(nowMs - t.at) <= PERFECT_MS ? "perfect" : "good");
@@ -98,6 +112,7 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
         sq.samples.push({ at: nowMs, raw });
         const before = sq.count;
         sq.count = Math.max(...sq.samples.map((s) => s.raw));
+        sq.emptyAt = sq.count > 0 ? null : sq.emptyAt ?? nowMs;
         return Math.max(0, sq.count - before);
       });
 
@@ -125,16 +140,12 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
 
       for (const t of tiles) {
         const sq = squares[t.lane];
-        // 3. A foot already standing on a hold tile's square at its time starts it, as good.
-        if (t.kind === "hold" && t.state === "waiting" && nowMs >= t.at && nowMs <= t.at + GOOD_MS && sq.count > 0) {
-          t.state = "holding";
-          t.grade = "good";
-          emit("holdStart", t, "good");
-        }
-        // 4. A held tile is finished by staying to the end or by leaving.
+        // 3. A held tile is finished by staying to the end or by leaving. A hold only starts with an arrival (step 2),
+        // never from a foot that was already standing there. A square empty for less than HOLD_GRACE_MS does not end it.
         if (t.state === "holding") {
           const stayed = nowMs >= t.tail - FLICKER_MS && sq.lastSeen >= t.tail - FLICKER_MS;
-          if (stayed || sq.count === 0) {
+          const left = sq.count === 0 && nowMs - sq.emptyAt >= HOLD_GRACE_MS;
+          if (stayed || left) {
             t.state = "hit";
             if (stayed) judge(t, t.grade, HOLD_POINTS_PER_BEAT * t.beats);
             else if (sq.lastSeen - t.at >= (t.tail - t.at) / 2) judge(t, "good");
@@ -143,7 +154,7 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
             if (t.state === "missed") emit("miss", t, "miss");
           }
         }
-        // 5. A tile nobody reached in time is a miss.
+        // 4. A tile nobody reached in time is a miss.
         if (t.state === "waiting" && nowMs > t.at + GOOD_MS) miss(t);
       }
 

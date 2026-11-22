@@ -1,6 +1,6 @@
 {
-  "name": "Platform Piano",
-  "short_name": "Platform Piano",
+  "name": "TTiles",
+  "short_name": "TTiles",
   "description": "Play a song on the floor of a train car, with your feet, together.",
   "start_url": "/",
   "scope": "/",
