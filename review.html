@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform Piano: tap review</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/src/review/review.css">
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1>Tap review</h1>
+    <p class="file" id="file-name"></p>
+    <div class="controls">
+      <button class="btn" id="open" type="button">Open files</button>
+      <span id="loaded-controls" class="controls" hidden>
+        <button class="btn" id="play" type="button" aria-keyshortcuts="Space">Play</button>
+        <button class="btn" id="next" type="button" aria-keyshortcuts="N">Next false tap</button>
+        <span class="group" role="group" aria-label="Time axis">
+          <button class="btn" type="button" data-zoom="all" aria-pressed="true">Whole test</button>
+          <button class="btn" type="button" data-zoom="10000" aria-pressed="false">10 s</button>
+          <button class="btn" type="button" data-zoom="3000" aria-pressed="false">3 s</button>
+        </span>
+        <button class="btn" id="mirror" type="button" aria-pressed="false" hidden>Mirror</button>
+      </span>
+    </div>
+  </header>
+  <p class="message" id="message" role="alert" hidden></p>
+  <section class="empty" id="empty">
+    <h2>Open a test</h2>
+    <p>Drop the test's .json file and its camera video (.webm) anywhere on this page, or pick them.</p>
+    <p>A plain seats recording from the tracking page works too, with no video. The detector then runs here to find the taps.</p>
+    <button class="btn primary" id="open-big" type="button">Open files</button>
+  </section>
+  <div class="grid" id="app" hidden>
+    <section class="cam" aria-labelledby="cam-h">
+      <h2 id="cam-h">What the camera saw</h2>
+      <div class="pic" id="pic">
+        <video id="video" muted playsinline preload="auto"></video>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+      <p class="note" id="video-note"></p>
+      <div id="phase-list" hidden>
+        <h2>Phases</h2>
+        <ol class="phases" id="phases"></ol>
+      </div>
+      <h2>At the play head</h2>
+      <div class="now" id="now" data-ms="0"></div>
+      <p class="keys"><kbd>Space</kbd> plays and pauses. <kbd>Left</kbd> and <kbd>Right</kbd> step one frame. <kbd>N</kbd> jumps to the next <span id="n-what">false tap</span>. Enter presses a focused button. Drag on the strips to scrub, or click a tap to see it.</p>
+    </section>
+    <section class="det" aria-labelledby="det-h">
+      <h2 id="det-h">What the detector did</h2>
+      <canvas id="strips" role="img" aria-label="Each seat's foot heights against time, with the taps the detector found"></canvas>
+      <ul class="legend" aria-label="How to read the strips">
+        <li><i class="g line"></i>Foot height over its ground (left foot dark, right foot lighter)</li>
+        <li><i class="g dash"></i>Threshold</li>
+        <li><i class="g air"></i>Foot in the air</li>
+        <li data-when="phases"><i class="g ok"></i>Tap on a beat</li>
+        <li data-when="phases"><i class="g bad"></i>Tap nobody asked for</li>
+        <li data-when="phases"><i class="g miss"></i>Beat with no tap</li>
+        <li data-when="plain"><i class="g tick"></i>A tap the detector found</li>
+      </ul>
+      <h2>Score</h2>
+      <div id="score"></div>
+      <h2 id="problems-h">Problems</h2>
+      <div id="problems"></div>
+    </section>
+  </div>
+</div>
+<div class="drop" id="drop" hidden>Drop the .json and the video to open them</div>
+<input type="file" id="picker" accept=".json,application/json,video/*,.webm" multiple hidden>
+<script type="module" src="/src/review/main.js"></script>
+</body>
+</html>

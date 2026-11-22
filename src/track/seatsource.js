@@ -67,6 +67,20 @@ export function frameReadout(t, read, feet, debug, taps, poses) {
   return { t, read, debug, taps, poses, lifted };
 }
 
+// Which seats have a new camera picture since the last look: their counter `n` moved on. `seen` is brought up to date.
+// The stage asks for feet on every screen frame (60 or more a second) and the camera gives about 30 pictures a second.
+// The tap detector must see each picture once: a repeated picture looks like a foot that held perfectly still, which
+// halves the shake it measures, and one noisy picture seen twice passes its "two pictures in a row" rule. On the real
+// two-person recording, repeats gave 2 taps from a seat at rest; each picture once gave none.
+export function freshSeats(poses, seen) {
+  const fresh = new Set();
+  for (const p of poses) {
+    if (seen.get(p.spotId) !== p.n) fresh.add(p.spotId);
+    seen.set(p.spotId, p.n);
+  }
+  return fresh;
+}
+
 // Where the floor draws a foot glow: in the pad's lane, for each foot that is down.
 export function glowFeet(layout, byPad) {
   return layout.spots.flatMap(({ id, rect }) => (byPad[id] ?? []).filter((f) => !f.lifted).map((f) => ({ u: rect.u + f.u * rect.w, v: rect.v + f.v * rect.h })));
@@ -109,6 +123,8 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
   let held = false; // following is off for this session only (a line was dragged)
   let lastFollow = 0;
   let latest = null; // the last bySpot frame's read-out (lastFrame)
+  const seenN = new Map(); // spotId -> the picture counter the tap detector last saw for that seat
+  let lastFeet = []; // the tap detector's last answer, kept for the screen frames between two camera pictures
   const heights = new Map(); // `${spotId}:${foot}` -> [{ t, y }] for the last HEIGHT_MS: how far a foot has just come down (tappedX)
   const drop = (f) => { const h = heights.get(`${f.spotId}:${f.foot}`); return h ? f.y - Math.min(...h.map((p) => p.y)) : 0; };
 
@@ -210,11 +226,21 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
         const key = `${f.spotId}:${f.foot}`;
         heights.set(key, [...(heights.get(key) ?? []).filter((p) => now - p.t < HEIGHT_MS), { t: now, y: f.y }]);
       }
-      const { feet, taps: tapped, debug } = taps.update(now, read, lanes);
+      // The tap detector sees each camera picture once (see freshSeats). Between pictures its last answer stands.
+      const poses = seats?.poses() ?? [];
+      const fresh = freshSeats(poses, seenN);
+      let tapped = [], debug = [];
+      if (fresh.size) {
+        const r = taps.update(now, read.filter((f) => fresh.has(f.spotId)), lanes);
+        lastFeet = [...lastFeet.filter((f) => !fresh.has(f.spotId)), ...r.feet];
+        tapped = r.taps;
+        debug = r.debug;
+      }
+      const feet = lastFeet;
       follow(now);
       const fired = tapped.map((t) => ({ ...t, x: tappedX(t, read, lanes, drop) }));
       for (const t of fired) tapLog[t.spotId] = { count: (tapLog[t.spotId]?.count ?? 0) + 1, lane: laneOf(t, swap, lanes), at: t.atMs, x: t.x };
-      latest = frameReadout(now, read, feet, debug, fired, seats?.poses() ?? []);
+      latest = frameReadout(now, read, feet, debug, fired, poses);
       return padFeet(feet, spotIds, swap, lanes);
     },
     // The last bySpot frame's read-out (null before the first), for the tracking test. Read it in the same tick as bySpot.

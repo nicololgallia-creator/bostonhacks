@@ -1,6 +1,37 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { makeSlices, padFeet, laneOf, glowFeet, feetMiddle, tappedX, frameReadout, freshSeats, LANE_U, ONE_LANE_U, PAD_V } from "./seatsource.js";
+import { readFileSync as readRecording } from "node:fs";
+import { createTapDetector as newTapDetector } from "./taps.js";
+
+test("freshSeats: only a seat whose picture counter moved on is fresh, and each picture is fresh once", () => {
+  const seen = new Map();
+  assert.deepEqual([...freshSeats([{ spotId: 1, n: 1 }, { spotId: 2, n: 1 }], seen)], [1, 2]);
+  assert.deepEqual([...freshSeats([{ spotId: 1, n: 1 }, { spotId: 2, n: 1 }], seen)], []); // the same pictures again: nothing new
+  assert.deepEqual([...freshSeats([{ spotId: 1, n: 2 }, { spotId: 2, n: 1 }], seen)], [1]); // seats take turns: one new picture
+  assert.deepEqual([...freshSeats([], seen)], []);
+});
+
+// Why freshSeats exists. The stage asks for feet on every screen frame, the camera gives about 30 pictures a second, so
+// before this rule each picture reached the tap detector two or more times. Here the real two-person recording is fed
+// both ways while both people rest (5 to 22 s): each picture once must give no taps.
+test("on the real recording, each picture once gives no taps at rest (and repeated pictures do, which is the bug)", () => {
+  const rec = JSON.parse(readRecording(new URL("../../qa/seats/real-two-1.json", import.meta.url), "utf8"));
+  const lanes = Object.fromEntries(rec.slices.map((s) => [s.spotId, 1]));
+  const restTaps = (repeatEveryMs) => {
+    const det = newTapDetector();
+    let taps = 0;
+    const feed = (t, fr) => { for (const x of det.update(t, fr.seats.flatMap((s) => s.feet.map((f) => ({ spotId: s.spotId, ...f }))), lanes).taps) if (x.atMs > 5000 && x.atMs < 22000) taps++; };
+    rec.frames.forEach((fr, i) => {
+      feed(fr.t, fr);
+      const next = rec.frames[i + 1]?.t ?? fr.t;
+      if (repeatEveryMs) for (let t = fr.t + repeatEveryMs; t < next; t += repeatEveryMs) feed(t, fr); // the same picture again, as a 60 Hz screen saw it
+    });
+    return taps;
+  };
+  assert.equal(restTaps(0), 0);
+  assert.ok(restTaps(1000 / 60) > 0, "repeats no longer cause taps: this half of the test can go");
+});
 import { createTapDetector } from "./taps.js";
 import { makeLayout } from "../stage/layout.js";
 import { createGame } from "../game/engine.js";
