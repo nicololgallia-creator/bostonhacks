@@ -20,7 +20,7 @@ const opt = (k, d) => { const i = argv.indexOf("--" + k); return i === -1 ? d : 
 const root = process.cwd();
 const work = path.resolve(opt("work", path.join(os.tmpdir(), "platform-piano-site")));
 const site = path.join(root, ".deploy", "platform-piano");
-const LIVE = "https://platform-piano.vercel.app/";
+const LIVE = "https://ttiles.us/";
 const NOT_PUBLIC = ["seats.html", "track.html", "floor-pilot.html", "review.html", "mediapipe", "qa-fixtures"]; // setup and test tools stay on the laptop. The floor page is public so anyone can try the whole game in a browser with the mouse as feet (the dev link); the pose model is left out, so camera play is laptop-only
 const run = (cmd, cwd = root) => execSync(cmd, { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 

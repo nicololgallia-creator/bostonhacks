@@ -62,7 +62,7 @@ Everything that goes on the Devpost page, in one place. Fill in each `TODO`, the
 | Link | Address |
 |---|---|
 | Code | https://github.com/nicololgallia-creator/bostonhacks (must be public before submitting) |
-| Live phone page | https://platform-piano.vercel.app |
+| Live phone page | https://ttiles.us |
 | Video | TODO |
 
 ## Tagline (200 characters max)

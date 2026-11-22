@@ -1,6 +1,6 @@
 // The poster's train comes from its own address, and its QR code sends a phone to that train:
 //   poster.html?room=GREENB22&line=Green-B&dir=1&at=place-bucen&car=2
-// The code holds https://platform-piano.vercel.app/?room=..&line=..&dir=..&at=..&car=.. (base= points it elsewhere).
+// The code holds https://ttiles.us/?room=..&line=..&dir=..&at=..&car=.. (base= points it elsewhere).
 // A missing value falls back to the same train the stage falls back to.
 import { create as createQr } from "qrcode";
 import { BUTTER, lineOf } from "../app/lines.js";
@@ -15,7 +15,7 @@ const train = {
 };
 
 // The phone page on the web. A printed code must never point at a laptop, so this is where it goes unless base= says otherwise.
-const LIVE = "https://platform-piano.vercel.app";
+const LIVE = "https://ttiles.us";
 // The room is how a phone on the web reaches this car's floor (the relay, see src/link.js). A printed poster cannot hold a
 // random one, so each car has a fixed code: the poster gets &room=XXXXXXXX and the stage is opened with the same ?room=.
 const room = params.get("room")?.toUpperCase();

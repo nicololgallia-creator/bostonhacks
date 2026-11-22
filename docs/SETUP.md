@@ -102,7 +102,7 @@ Everything is saved on the laptop. If the camera or the projector gets bumped, p
 5. The player taps **Play this song**, then taps a seat. One phone can take several seats. Tap a seat again to give it back.
 6. When the seats are right, tap **Ready!**. The floor counts down 3, 2, 1.
 
-Which address is in the QR code: if the laptop has internet and the relay connects, the code holds the hosted page `https://platform-piano.vercel.app/` (set in `.env.local`). Phones then need only their own internet. If not, it holds the laptop's Wi-Fi address, and the phones must be on the same Wi-Fi or hotspot. **(not yet proven on the real floor)** Whether the hosted page is up to date was not checked.
+Which address is in the QR code: if the laptop has internet and the relay connects, the code holds the hosted page `https://ttiles.us/` (set in `.env.local`). Phones then need only their own internet. If not, it holds the laptop's Wi-Fi address, and the phones must be on the same Wi-Fi or hotspot. **(not yet proven on the real floor)** Whether the hosted page is up to date was not checked.
 
 Venue Wi-Fi often blocks phones from reaching a laptop. If a QR code will not open, turn on one phone's hotspot and put the laptop and the other phones on it.
 

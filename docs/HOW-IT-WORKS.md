@@ -90,7 +90,7 @@ Hardware: the DJI Osmo Action 4 (webcam mode, USB) and the Panseba HI-04 project
 - The real lag number, and how fast the tracker runs on the laptop with the GPU while the game draws (`reports/seat-stage.md`).
 - The tracking speed on the real camera. Nicolo said on Sat 6:25 PM that it "moves pretty slowly". No number from the real camera has been recorded since.
 - Anything on a real train or platform: power for the projector, the lit station, and the phone signal underground.
-- The hosted phone page at `platform-piano.vercel.app`: it was not checked that it matches the current code.
+- The hosted phone page at `ttiles.us`: it was not checked that it matches the current code.
 - Sound by ear, and the tunes from memory (`PLAN.md`: Jingle Bells, Ode to Joy, London Bridge, Happy Birthday need a listen).
 
 ## Limits we say out loud

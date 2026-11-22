@@ -16,7 +16,7 @@ test("a phone served by the laptop uses the local link only", () => {
 });
 
 test("a phone served from anywhere else uses the relay only", () => {
-  for (const host of ["platform-piano.vercel.app", "172.32.0.1", "8.8.8.8", "example.com"]) {
+  for (const host of ["ttiles.us", "platform-piano.vercel.app", "172.32.0.1", "8.8.8.8", "example.com"]) {
     assert.deepEqual(pick(host, "/"), { role: "phone", local: false, relay: true }, host);
   }
 });

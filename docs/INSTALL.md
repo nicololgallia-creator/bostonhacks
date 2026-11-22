@@ -61,7 +61,7 @@ The lines that cut the camera picture into one slice for each seat fit themselve
 ## How people join
 
 1. The floor shows a code. Each player scans it with their phone camera. The phone opens the TTiles page.
-2. With internet on the laptop, the code opens https://platform-piano.vercel.app and the phone needs only its own data or Wi-Fi.
+2. With internet on the laptop, the code opens https://ttiles.us and the phone needs only its own data or Wi-Fi.
 3. With no internet, the code holds the laptop's own network address, and the phone must be on the same network as the laptop, one that lets devices talk to each other. Many venue networks block that. Turn on one phone's hotspot and put the laptop and the other phones on it. **(not yet proven on the real floor)**
 4. The phone asks where the player is getting off, offers a song, and lets the player tap a seat. Then the player taps **Ready!** and the floor counts down.
 

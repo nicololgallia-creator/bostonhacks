@@ -356,7 +356,7 @@ This section overrides every earlier wave. Read it first if you are a new sessio
 **What the first run on the real floor taught (Nicolo, 6:25 PM):** the projector and the camera stand across the aisle FACING the players. The picture turns half way round and the seats mirror. One saved switch: `src/facing.js`, key T on the stage, `?facing=1`. Tracking "moves pretty slowly" and "some [taps] go off when they're not supposed to": both open. The guided test below is how we get numbers.
 
 **Live addresses**
-- Public phone page: https://platform-piano.vercel.app (Vercel project `platform-piano`, this event only). Publish with `node tools/publish-site.mjs` from PowerShell: it builds the last commit, never the working files.
+- Public site: https://ttiles.us since Sat 9:50 PM (the same Vercel project `platform-piano`, this event only; https://platform-piano.vercel.app still answers). The floor page is public too: https://ttiles.us/stage.html is the dev link, mouse as feet. Publish with `node tools/publish-site.mjs` from PowerShell: it builds the last commit, never the working files.
 - Demo copy on the laptop, built from a commit: http://localhost:4174. To refresh it, run the publish script with `--work <the folder that copy is served from>` (the scratchpad `deploy-src` folder in the session that started it), then restart that preview if `server/` changed.
 - Builders check on http://localhost:4173 (the working files, rebuilt by whoever needs it). Dev server: 5173.
 - `.env.local` holds `VITE_PUBLIC_URL`, so the stage's QR code holds the public address once the relay connects, else the laptop's address.
