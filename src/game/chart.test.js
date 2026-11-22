@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { splitParts } from "./parts.js";
 import {
-  chartSpan, longestWait, backingLeft, MIN_GAP_MS, TEAM_WAIT_MS, PLAYER_WAIT_MS, RUN_LENGTHS, TOGETHER_EVERY, HOLD_SHARE,
+  chartSpan, longestWait, backingLeft, LEVELS, difficultyOf, MIN_GAP_MS, TEAM_WAIT_MS, PLAYER_WAIT_MS, RUN_LENGTHS, TOGETHER_EVERY, HOLD_SHARE,
 } from "./chart.js";
 import { createGame, maxScore, isHold, HOLD_MS } from "./engine.js";
 import { songs } from "../songs/index.js";
@@ -260,4 +261,87 @@ test("a perfect run through the engine scores exactly maxScore, and a versus riv
   const shared = splitParts(songs.find((s) => s.id === "ship-never-returned"), 4, { mode: "versus" });
   const results = shared.map(perfect);
   results.forEach((r, i) => { assert.equal(r.score, maxScore(shared[i])); assert.equal(r.score, results[0].score); assert.equal(r.counts.miss, 0); });
+});
+
+// ---- levels (easy, normal, hard)
+
+const LEVEL_NAMES = ["easy", "normal", "hard"];
+const total = (parts) => parts.reduce((n, p) => n + p.notes.length, 0);
+
+test("normal is exactly the tiles the game gave before levels: every song, 1 to 4 players, team and duel", () => {
+  // chart-normal.fixture.json holds a fingerprint of each chart, taken from the code before levels existed.
+  const before = JSON.parse(readFileSync(new URL("./chart-normal.fixture.json", import.meta.url), "utf8"));
+  const print = (x) => createHash("sha1").update(JSON.stringify(x)).digest("hex").slice(0, 16);
+  assert.equal(Object.keys(before).length, songs.length);
+  for (const song of songs) for (const mode of ["team", "versus"]) for (let seats = mode === "team" ? 1 : 2; seats <= 4; seats++) {
+    const want = before[song.id][`${mode}${seats}`];
+    assert.equal(print(splitParts(song, seats, { mode }).map((p) => p.notes)), want, `${song.id}, ${mode}, ${seats} players: default level`);
+    assert.equal(print(splitParts(song, seats, { mode, difficulty: "normal" }).map((p) => p.notes)), want, `${song.id}, ${mode}, ${seats} players: "normal"`);
+  }
+});
+
+test("a duel is equal at every level: the same number of tiles, the same kinds and holds, the same top score", () => {
+  for (const difficulty of LEVEL_NAMES) for (const song of [...songs, tune(30), tune(31, { gapBeats: 2, length: 1.5 }), tune(7)]) for (let seats = 2; seats <= 4; seats++) {
+    const parts = splitParts(song, seats, { mode: "versus", difficulty });
+    const where = `${difficulty}, ${song.id}, ${seats} players`;
+    parts.forEach((p) => {
+      assert.equal(p.notes.length, parts[0].notes.length, `${where}: same number of tiles`);
+      assert.equal(maxScore(p), maxScore(parts[0]), `${where}: same top score`);
+      p.notes.forEach((n, k) => {
+        assert.equal(n.hold, parts[0].notes[k].hold, `${where}: tile ${k} is the same kind`);
+        if (n.hold) assert.equal(n.beats, parts[0].notes[k].beats, `${where}: tile ${k} is held as long`);
+      });
+    });
+  }
+});
+
+test("easy has no holds, keeps each player's tiles 700 ms apart, and nobody waits more than 6 s", () => {
+  for (const mode of ["team", "versus"]) for (const song of songs) for (let seats = mode === "team" ? 1 : 2; seats <= 4; seats++) {
+    const span = chartSpan(song);
+    for (const p of splitParts(song, seats, { mode, difficulty: "easy" })) {
+      const where = `${song.id}, ${mode}, ${seats} players`;
+      assert.ok(p.notes.every((n) => !n.hold), `${where}: no holds`);
+      p.notes.forEach((n, k) => { if (k) assert.ok(ms(song, n) - ms(song, p.notes[k - 1]) >= LEVELS.easy.gap - 1e-6, `${where}: tiles 700 ms apart`); });
+      assert.ok(longestWait(p, span) <= 6000 + 1e-6, `${where}: waits ${(longestWait(p, span) / 1000).toFixed(1)} s`);
+    }
+  }
+  assert.equal(LEVELS.easy.together, Infinity, "nobody taps together on easy: no tile is played by every player");
+  const parts = splitParts(tune(48), 3, { difficulty: "easy" });
+  const seen = new Map();
+  for (const n of everyone(parts)) seen.set(n.beat, (seen.get(n.beat) ?? 0) + 1);
+  assert.ok([...seen.values()].every((c) => c === 1));
+});
+
+test("hard never goes under 350 ms between a player's tiles, never waits more than Normal allows (4 s), and has more tiles and holds than normal", () => {
+  for (const mode of ["team", "versus"]) for (const song of songs) for (let seats = mode === "team" ? 1 : 2; seats <= 4; seats++) {
+    const span = chartSpan(song);
+    for (const p of splitParts(song, seats, { mode, difficulty: "hard" })) {
+      const where = `${song.id}, ${mode}, ${seats} players`;
+      p.notes.forEach((n, k) => { if (k) assert.ok(ms(song, n) - ms(song, p.notes[k - 1]) >= MIN_GAP_MS - 1e-6, `${where}: tiles ${MIN_GAP_MS} ms apart`); });
+      assert.ok(longestWait(p, span) <= PLAYER_WAIT_MS + 1e-6, `${where}: waits ${(longestWait(p, span) / 1000).toFixed(1)} s`);
+    }
+  }
+  const sum = (difficulty, f) => songs.reduce((n, song) => n + f(splitParts(song, 2, { difficulty })), 0);
+  assert.ok(sum("hard", total) >= 1.2 * sum("normal", total), "hard has at least a fifth more tiles");
+  assert.ok(sum("easy", total) <= 0.65 * sum("normal", total), "easy has well under two thirds of the tiles");
+  const holds = (parts) => parts.reduce((n, p) => n + p.notes.filter((t) => t.hold).length, 0);
+  assert.ok(sum("hard", holds) > sum("normal", holds), "hard has more holds");
+});
+
+test("a level that is not easy, normal or hard is refused by splitParts", () => {
+  assert.throws(() => splitParts(songs[0], 2, { difficulty: "extreme" }), /"easy", "normal" or "hard"/);
+  assert.equal(difficultyOf("extreme"), "normal");
+  assert.equal(difficultyOf(undefined), "normal");
+  assert.equal(difficultyOf("hard"), "hard");
+});
+
+test("backingLeft agrees with the parts at every level: an entry is a tile or backing, never both, never lost", () => {
+  for (const difficulty of LEVEL_NAMES) for (const mode of ["team", "versus"]) for (const song of songs) for (let seats = mode === "team" ? 1 : 2; seats <= 4; seats++) {
+    const parts = splitParts(song, seats, { mode, difficulty });
+    const used = new Set(everyone(parts).filter((n) => n.bi !== undefined).map((n) => n.bi));
+    const left = backingLeft(song, parts);
+    assert.equal(left.length, song.backing.length - used.size, `${difficulty}, ${song.id}, ${mode}, ${seats}: every entry is a tile or left`);
+    assert.ok(left.every((e) => !used.has(song.backing.indexOf(e))), `${difficulty}, ${song.id}: no entry both`);
+    assert.ok([...used].every((bi) => !song.backing[bi].drum), "no drum is a tile");
+  }
 });

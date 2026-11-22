@@ -3,6 +3,7 @@
 // runs for each taken seat, and every seat plays its share of the song at the same time.
 import { createGame, gradeFor, songSeconds, TRAVEL_MS, FLICKER_MS } from "../game/engine.js";
 import { splitParts, lanesInPad } from "../game/parts.js";
+import { DIFFICULTIES, difficultyOf } from "../game/chart.js";
 import { makeLayout, asLayout, MAX_SEATS, DEFAULT_SEATS } from "./layout.js";
 
 export const COUNTDOWN_MS = 3000;
@@ -17,7 +18,7 @@ const HERE_MS = 10000; // a player not heard from for this long is removed, but 
 const AFTER_SONG_MS = 30000; // after a song a quiet phone keeps its seats this long: it locked itself while its player looked at the floor
 const LIVE = ["warmup", "countdown", "playing", "paused"];
 // Commands that change the game: only a phone that has joined may send them (the stage's own keys are trusted).
-const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "calibrate", "mode"];
+const COMMANDS = ["start", "pause", "resume", "skip", "stop", "layout", "set", "calibrate", "mode", "difficulty"];
 const modeOf = (x) => (x === "versus" ? "versus" : "team");
 
 const isId = (x) => typeof x === "string" && x.length > 0 && x.length <= 64;
@@ -88,6 +89,8 @@ export function createSession({ songs, layout, train } = {}) {
   let songLanes = 2; // lanes in a pad for the song loaded now
   let chosen = "team"; // the mode last chosen in the lobby
   let songMode = "team"; // the mode of the song loaded now: versus needs two or more seats, else it runs as team
+  let chosenLevel = "normal"; // the level ("easy", "normal" or "hard") last chosen in the lobby: one for the whole game
+  let songLevel = "normal"; // the level of the song loaded now
   let warmAt = 0; // when the warm-up began (the stage's clock); moves forward by the time spent paused
   let pausedFrom = null; // "warmup", "countdown" or "playing": where a pause began
   let warmedKey = null; // the seats (and who holds them) that last finished a warm-up: the same people need no second one
@@ -184,7 +187,8 @@ export function createSession({ songs, layout, train } = {}) {
     songMode = chosen === "versus" && seated.length >= 2 ? "versus" : "team";
     // The taken seats, in seat order, are one keyboard: each plays its own lanes of the song, all at once.
     // The lanes in a pad are fixed for the song: a seat released part way does not change them.
-    const parts = splitParts(song, seated.length, { mode: songMode });
+    songLevel = chosenLevel;
+    const parts = splitParts(song, seated.length, { mode: songMode, difficulty: songLevel });
     songLanes = lanesInPad(seated.length);
     engines = new Map(seated.map((spotId, i) => {
       const game = createGame({ song: parts[i], lanes: songLanes });
@@ -277,8 +281,15 @@ export function createSession({ songs, layout, train } = {}) {
       if (status !== "lobby") return "A song is running. Change the mode when it ends.";
       chosen = mode;
     },
-    // `mode` in a start: "versus" is versus, any other value is team, and none keeps what the lobby shows.
-    start({ songIds, transit: sent, mode }, nowMs) {
+    // The level of the lobby, like the mode: one for the whole game, shown on the floor and every phone.
+    difficulty({ difficulty }) {
+      if (!DIFFICULTIES.includes(difficulty)) return false;
+      if (status !== "lobby") return "A song is running. Change the level when it ends.";
+      chosenLevel = difficulty;
+    },
+    // `mode` in a start: "versus" is versus, any other value is team, and none keeps what the lobby shows. `difficulty` the same:
+    // a level that is not one of the three is "normal", and none keeps what the lobby shows.
+    start({ songIds, transit: sent, mode, difficulty }, nowMs) {
       const t = cleanTransit(sent);
       if (!Array.isArray(songIds) || !songIds.every(isId) || t === undefined) return false;
       if (status !== "lobby") return "A song is already running. Stop it first.";
@@ -287,6 +298,7 @@ export function createSession({ songs, layout, train } = {}) {
       if (found.includes(undefined)) return "One of those songs is not in the library.";
       if (!owner.size) return "Pick a seat before starting.";
       if (mode !== undefined) chosen = modeOf(mode);
+      if (difficulty !== undefined) chosenLevel = difficultyOf(difficulty);
       queue = found;
       transit = t;
       // Warm up first, unless it is off or these same people in these same seats already did (play again).
@@ -400,6 +412,7 @@ export function createSession({ songs, layout, train } = {}) {
         type: "state",
         status,
         mode: status === "lobby" ? chosen : songMode, // a song that runs as team (one seat) says team
+        difficulty: status === "lobby" ? chosenLevel : songLevel,
         winner: winner(),
         warmup: !warming() ? null : {
           need: WARM_TAPS, beatMs: WARM_BEAT_MS, maxMs: WARM_MAX_MS, startedAtMs: warmAt,

@@ -1,0 +1,155 @@
+{
+ "mary-lamb": {
+  "team1": "09b64640efb8f332",
+  "team2": "8fda8635a0de0c59",
+  "team3": "a08c2e3d3892fd60",
+  "team4": "8ded479d787f99e1",
+  "versus2": "a4be29cd6561dc1f",
+  "versus3": "5da654299ad857ee",
+  "versus4": "0d7a803b0bdbd215"
+ },
+ "row-boat": {
+  "team1": "bd5dbf79f39f5b5b",
+  "team2": "de9b3d39212ea4bb",
+  "team3": "535392041265f430",
+  "team4": "c1e29055f2a3e4e7",
+  "versus2": "06ec6b917069199a",
+  "versus3": "94ad43f99b387d35",
+  "versus4": "a0e83449f5c3b21b"
+ },
+ "happy-birthday": {
+  "team1": "d39a1e0edf1380f1",
+  "team2": "b726bc21c90ba197",
+  "team3": "03f7dd6905c5fa49",
+  "team4": "dbe5e328338c6198",
+  "versus2": "332c498cd22a806a",
+  "versus3": "cc7d5a1f8809142c",
+  "versus4": "bb95f4201c22fd87"
+ },
+ "london-bridge": {
+  "team1": "2d1a087380940836",
+  "team2": "324e31f31b1fa1c2",
+  "team3": "2a632527ed6df65c",
+  "team4": "b424806c6a0b4919",
+  "versus2": "61b1df68fe79d7f1",
+  "versus3": "695a4052c9371084",
+  "versus4": "41f7501e1423a8f4"
+ },
+ "more-than-a-feeling": {
+  "team1": "73ba1dc42a8e356f",
+  "team2": "2f62ff976ac0727e",
+  "team3": "c040bf2914cab3a4",
+  "team4": "bae77ceb38fb0b86",
+  "versus2": "80f2b2c66b9d2b6e",
+  "versus3": "65d0d20ba1df198f",
+  "versus4": "0f2094ef5352b341"
+ },
+ "twinkle": {
+  "team1": "90a1c009fd8093b1",
+  "team2": "f75829f8a596965f",
+  "team3": "4b3bae8943979dc1",
+  "team4": "45c9f597def8119c",
+  "versus2": "4a02bd368230a711",
+  "versus3": "63963f656f1817a7",
+  "versus4": "06e6cda22f9be0ed"
+ },
+ "frere-jacques": {
+  "team1": "9164b51b54991649",
+  "team2": "11499993ccb6cf1c",
+  "team3": "4908a905e27cdd6a",
+  "team4": "5f585817a421cc15",
+  "versus2": "80d25d95611ce28b",
+  "versus3": "a55b5be82ce23477",
+  "versus4": "3e7db1b6dd79ef6e"
+ },
+ "shipping-up-to-boston": {
+  "team1": "c300ff6c67443f61",
+  "team2": "54883ec38a15846d",
+  "team3": "b56ecb7f8b769b44",
+  "team4": "8d7142c20c879da5",
+  "versus2": "73357306d86b3347",
+  "versus3": "594fccf9beb406a8",
+  "versus4": "5172b0572f1a5303"
+ },
+ "greensleeves": {
+  "team1": "641c5e5eb453db6a",
+  "team2": "754710c33cc927b1",
+  "team3": "c1283981b6c4f5b8",
+  "team4": "b1d775b6421236ca",
+  "versus2": "d16894dba14e5a24",
+  "versus3": "4a0adb3c1dfcb1ac",
+  "versus4": "11ebeca0fa1db72c"
+ },
+ "saints": {
+  "team1": "a48c80957c4ea6c7",
+  "team2": "815b9ca0e0743f08",
+  "team3": "28c2bafc5675da3b",
+  "team4": "5ea4dbdf2f1673b9",
+  "versus2": "9711ba670c9bee80",
+  "versus3": "08e50d618eb02c06",
+  "versus4": "1dff965e4270db7f"
+ },
+ "fur-elise": {
+  "team1": "0d42938b6d856668",
+  "team2": "9f90de2ca68240b1",
+  "team3": "8182b39c399ed065",
+  "team4": "b2059297e4ded34e",
+  "versus2": "2b091bdbadd91422",
+  "versus3": "ea1f742380468a2a",
+  "versus4": "f517287594f41f0b"
+ },
+ "take-me-out-to-the-ball-game": {
+  "team1": "411932a39fc2ccb4",
+  "team2": "c5ed41d80481affe",
+  "team3": "cf25975f65773e1e",
+  "team4": "456cc74225743dff",
+  "versus2": "e2f599e7d16b5ccd",
+  "versus3": "a4992ce799ab80c9",
+  "versus4": "c8b53d5602ad91ae"
+ },
+ "jingle-bells": {
+  "team1": "3287d169d661918c",
+  "team2": "0731cf88b45de333",
+  "team3": "f2ae11bce4297c1e",
+  "team4": "62d9fb0361623ec2",
+  "versus2": "1bf35393b17ca8e0",
+  "versus3": "ada059fcee33cac4",
+  "versus4": "1b08c8b275ed9a11"
+ },
+ "ode-to-joy": {
+  "team1": "b746d6b817fac131",
+  "team2": "f5a00f16499c9c23",
+  "team3": "5a8a35a46e2f242b",
+  "team4": "aaf871616561728f",
+  "versus2": "524184ec3ff5a0b1",
+  "versus3": "38cc1c6f3c39bb90",
+  "versus4": "b48b903f26f106cd"
+ },
+ "sweet-caroline": {
+  "team1": "54f5327dd51e34cb",
+  "team2": "11edc1cbe89ab4d7",
+  "team3": "6240190104498ccb",
+  "team4": "fbda77a73a0e815c",
+  "versus2": "34f2b154a0d739f7",
+  "versus3": "03bc9f1f4e49de5d",
+  "versus4": "0a775fe45f514f40"
+ },
+ "dirty-water": {
+  "team1": "de9e6f5539000f0c",
+  "team2": "84c71277e69f1bb4",
+  "team3": "46476511a4a8eed6",
+  "team4": "7935c7a64fd5758b",
+  "versus2": "625d1102f6f134df",
+  "versus3": "e8194875f0b4f8f8",
+  "versus4": "9fd1e088a1d11472"
+ },
+ "ship-never-returned": {
+  "team1": "9028dc0e01f0d0da",
+  "team2": "94405f77b15d1bed",
+  "team3": "dd330010249ab9d5",
+  "team4": "c96c3ac8aeb81e32",
+  "versus2": "1953a87d50753d64",
+  "versus3": "2da1571a0b5aa5bb",
+  "versus4": "e3fe7ce3af3967d8"
+ }
+}

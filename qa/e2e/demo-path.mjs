@@ -10,6 +10,8 @@ import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
 import { launch } from "../../tools/browser.mjs";
+import { splitParts } from "../../src/game/parts.js";
+import { songs } from "../../src/songs/index.js";
 
 const arg = process.argv.indexOf("--base");
 const BASE = (arg > 0 ? process.argv[arg + 1] : "http://localhost:4173").replace(/\/$/, "");
@@ -177,6 +179,9 @@ async function step3(c) {
   });
   await until("the ticket to show the new song", async () => (await c.phone.$eval(".ticket h2", (e) => e.textContent)) !== how.title, 3000);
   c.song = await c.phone.$eval(".ticket h2", (e) => e.textContent);
+  await clickButton(c.phone, "Hard"); // the level: the lobby shows it before anyone starts
+  await until("the lobby to show Hard", () => c.spy.state.difficulty === "hard", 4000);
+  await shot(c.phone, 3, "phone-hard");
   await clickButton(c.phone, "Play this song");
   await until("the seats screen", () => c.phone.$(".pad"));
   for (const seat of [1, 2]) {
@@ -200,7 +205,13 @@ async function step3(c) {
   const s = c.spy.state;
   c.clientId = s.players[0]?.clientId; // the phone's id, to count its seats after the lobby comes back
   if (s.song?.title !== c.song) throw new Error(`the stage is playing "${s.song?.title}", the phone chose "${c.song}"`);
-  return `recommended "${how.recommended}", played "${c.song}" (${s.song.seconds} s) with seats ${s.players.map((p) => p.spotId)}; stage went ${c.spy.statuses.slice(mark - 1).join(" > ")}`;
+  // Hard has more tiles than Normal for the same song and seats: the players' totals are the tiles each plays.
+  if (s.difficulty !== "hard") throw new Error(`the phone chose Hard and the stage says "${s.difficulty}"`);
+  const song = songs.find((x) => x.id === s.song.id);
+  const tiles = (difficulty) => splitParts(song, s.players.length, { mode: s.mode, difficulty }).reduce((n, p) => n + p.notes.length, 0);
+  const played = s.players.reduce((n, p) => n + p.total, 0);
+  if (played !== tiles("hard") || !(played > tiles("normal"))) throw new Error(`the stage plays ${played} tiles; Hard should be ${tiles("hard")} and Normal is ${tiles("normal")}`);
+  return `hard: ${played} tiles (Normal ${tiles("normal")}); recommended "${how.recommended}", played "${c.song}" (${s.song.seconds} s) with seats ${s.players.map((p) => p.spotId)}; stage went ${c.spy.statuses.slice(mark - 1).join(" > ")}`;
 }
 
 // 4. Feet on the stage hit tiles, and the score rises on the stage and on the phone.

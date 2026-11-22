@@ -349,6 +349,24 @@ Nicolo, 5:25 PM: "1 player gets two note lanes (one per foot), 2 players get 2 n
 |---|---|---|---|---|---|---|---|
 | X5 | lanes (hack-backend) | Nicolo, Claude Code | `src/game/parts.js`, `src/game/parts.test.js`, `src/stage/session.js`, `src/stage/session.test.js`, `src/stage/layout.js`, `src/stage/layout.test.js` | **The new lane rule.** Build the four points above exactly, in pure logic, with a test for each: lanes in a pad for 0, 1, 2, 3 and 4 taken seats; `splitParts` for 1 to 4 seats over every real song (every note on exactly one seat, every seat within two notes of the others, `lane` 0 for all seats when two or more play, lanes 0 and 1 for a lone seat); the session giving each engine the right lane count at the start of a song and holding it for that song even when a seat is released part way; `layout.lanes` in the State following the seats taken in the lobby. Update every test that assumed 2 lanes a pad. Print the notes for each seat for 2, 3 and 4 seats on every real song. List under "Needs from others" every place outside your files that assumes 2 lanes a pad or reads a note's `lane` as 0 or 1 (`src/game/render.js`, `src/phone/`, `src/track/`). | `node --test src/game/parts.test.js src/stage/session.test.js src/stage/layout.test.js src/game/engine.test.js` passes and prints the table. `stage.html?demo=1&feet=mouse&autostart=1` shows three pads of one lane each with tiles on all three, and no console errors. Build passes from PowerShell. | 30 min | ready |
 
+## Wave 10 (Sat 11:10 PM to Sun 12:50 AM): after the second playtest
+
+Nicolo: "Calibration has gotten worse and many clicks were missing or just wrong... the QR code scanner was not scanning at all." No recording exists from that playtest.
+
+| What | State | Proof | Not yet run on |
+|---|---|---|---|
+| Seat lines hold still from the warm-up to the results (`linesMayMove` in src/track/seatsource.js). Before, they followed people during a song and saved over the calibration | live, 86aae3a | one test | the real floor |
+| **Test tracking** button in the lobby (the guided test, key G): leaves two files in Downloads | live, 86aae3a | clicked with a stand-in camera | the real floor |
+| The phone's scanner: zxing (the `barcode-detector` package, its .wasm from our own build) on the full camera picture, the phone's own reader first where it exists, and the screen says what it is doing | pushed, e12cb01 | bench 61 to 64 percent before, 87 to 95 percent after (qa/scan/bench.mjs); a small tilted dim code reads on the built screen in 476 ms | a real phone |
+| Song check page, every song two ways (tools/make-audition.mjs, files in shots/audition) | published: https://claude.ai/artifact/G7i9DadjpM7BSbaJC7LGN4 (private to Nicolo) | lengths, peaks, page driven by script | his ears; inside claude.ai |
+| Walkthrough video, horizontal only (tools/walkthrough.mjs) | Downloads	tiles-walkthrough	tiles-walkthrough.mp4 | stills looked at | YouTube |
+
+**Difficulty (Sun 1:30 AM):** `difficulty: "easy" | "normal" | "hard"` travels beside `mode`: the phone's song screen sends it (and the start message carries it), the session checks it (anything else is "normal"), `snapshot().difficulty` holds it, and both `splitParts(song, seats, { mode, difficulty })` callers use it. Normal is exactly the old tiles (src/game/chart-normal.fixture.json pins 136 charts). Easy is about 57 percent of Normal's tiles with no holds; Hard about 124 percent. Table: reports/difficulty.md. Not yet played by a person at any level.
+**Songs (Sun 1:05 AM):** Nicolo marked 8 Good and 9 Needs work (his words are in AGENTS.md). Test clips for his ears come before any change to a song file or to how taps sound.
+
+Open, in order: (1) a real-floor recording from the Test tracking button, then tracking fixes from it; (2) a real phone on the scanner, reading the grey line if it fails; (3) Nicolo's notes from the song check page. Known from the render numbers: the tune plays as a quiet guide even with no taps (a perfect run is only 1 to 3.5 dB louder in the tune), the backing runs 120 ms ahead of the taps (`offsetMs`), and a miss plays a thud.
+The floor on ttiles.us keeps its own saved calibration, separate from the laptop's localhost: press Calibrate once on each address.
+
 ## Wave 8 (Sat 6:00 to 7:10 PM): the real floor, the web, and where things stand
 
 This section overrides every earlier wave. Read it first if you are a new session.

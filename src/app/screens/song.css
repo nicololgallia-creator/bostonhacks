@@ -1,0 +1,14 @@
+/* Screen 3: Easy, Normal or Hard under the ticket. The same pills as Team and Duel (seats.css), three across, and one line under them. */
+.level-pick { display: flex; flex-direction: column; gap: 0.5rem; margin-block: -0.5rem; } /* a little closer to the ticket and the buttons than the 1.5rem between the rest, so "Play this song" stays high */
+.levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.level-pill {
+  display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 3rem; padding: 0.25rem 0.5rem; cursor: pointer;
+  background: var(--paper); border: var(--stroke) solid var(--ink); border-radius: 2rem; font: 400 1.25rem/1 var(--display); letter-spacing: 0.01em;
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+.level-pill::before { content: ""; flex: none; width: 0.625rem; height: 0.625rem; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--paper); transition: background-color 160ms var(--ease-out), transform 260ms var(--ease-pop); }
+.level-pill[aria-checked="true"] { background: var(--c); color: var(--on); }
+.level-pill[aria-checked="true"]::before { background: var(--ink); transform: scale(1.15); }
+.level-pill:hover:not([aria-checked="true"]) { background: var(--c-soft); }
+.level-pill:active { transform: scale(0.97); }
+.level-note { min-height: 1.35em; text-align: center; font-size: 0.9375rem; font-weight: 800; line-height: 1.35; color: var(--ink-2); }
