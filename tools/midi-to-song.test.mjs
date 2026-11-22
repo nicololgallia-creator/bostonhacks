@@ -23,7 +23,6 @@ function makeMidi(tracks, bpm = 120) {
 }
 const at = (...pairs) => pairs.map(([midi, time, duration = 0.5]) => ({ midi, time, duration }));
 const meta = { id: "t", title: "T", by: "B" };
-const secondsApart = (song, a, b) => ((b.beat - a.beat) * 60) / song.bpm;
 
 function checkSongRules(song) {
   song.notes.forEach((n, i) => {
@@ -32,7 +31,6 @@ function checkSongRules(song) {
     if (i) {
       const prev = song.notes[i - 1];
       assert.ok(n.beat > prev.beat && prev.beat + prev.beats <= n.beat, `note ${i} overlaps`);
-      assert.ok(secondsApart(song, prev, n) >= 0.4, `notes ${i - 1} and ${i} too close`);
     }
   });
 }
@@ -59,15 +57,18 @@ test("when notes start together the highest is kept, and low notes move up whole
   checkSongRules(song);
 });
 
-test("a note under 0.4 s after another is dropped, and the one off the beat goes", () => {
-  // 120 bpm: a quarter is 0.5 s. The note at 0.75 s sits off the beat and 0.25 s after the first.
-  const { song, dropped } = convertMidi(makeMidi([{ notes: at([60, 0], [62, 0.75, 0.25], [64, 1]) }]), meta);
-  assert.deepEqual(song.notes.map((n) => n.midi), [60, 64]);
-  assert.equal(dropped, 1);
+test("notes close together are all kept, and a note is shortened where the next one starts", () => {
+  // 120 bpm: a quarter is 0.5 s. The notes at 0.25 s and 0.75 s sit off the beat, and the first one rings 0.5 s.
+  const { song } = convertMidi(makeMidi([{ notes: at([60, 0], [62, 0.25, 0.25], [64, 0.75, 0.25], [65, 1]) }]), meta);
+  assert.deepEqual(song.notes.map((n) => [n.beat, n.midi]), [[0, 60], [1, 62], [3, 64], [4, 65]]);
+  assert.equal(song.bpm, 240);
+  assert.equal(song.notes[0].beats, 1); // it would ring for 2 grid steps, and the next note starts after 1
   checkSongRules(song);
-  // The same the other way round: the earlier note is on the beat, the later one is not.
-  const { song: later } = convertMidi(makeMidi([{ notes: at([60, 0], [62, 0.25, 0.25], [64, 0.5], [65, 1.5]) }]), meta);
-  assert.deepEqual(later.notes.map((n) => n.midi), [60, 64, 65]);
+});
+
+test("two notes with the same start keep only the higher one", () => {
+  const { song } = convertMidi(makeMidi([{ notes: at([60, 0], [67, 0], [62, 1]) }]), meta);
+  assert.deepEqual(song.notes.map((n) => n.midi), [67, 62]);
 });
 
 test("--from and --to keep only that section, and beat 0 is its first note", () => {
@@ -118,6 +119,23 @@ function scratchRoot() {
   return root;
 }
 const arg = (root, ...rest) => run([fileURLToPath(real), ...rest], root);
+
+test("--replace writes an existing song again and keeps its place in the list, and is refused without it or for a new id", () => {
+  const root = scratchRoot();
+  try {
+    arg(root, "--id", "my-song", "--title", "My Song", "--by", "Someone, 1900");
+    const listed = readFileSync(join(root, "src/songs/index.js"), "utf8");
+    assert.throws(() => arg(root, "--id", "my-song", "--title", "My Song", "--by", "x"), /add --replace/);
+    const out = arg(root, "--id", "my-song", "--title", "Again", "--by", "x", "--replace", "--from", "0", "--to", "20");
+    assert.match(out, /Wrote songs.my-song.json/);
+    assert.equal(JSON.parse(readFileSync(join(root, "songs/my-song.json"), "utf8")).title, "Again");
+    assert.equal(readFileSync(join(root, "src/songs/index.js"), "utf8"), listed);
+    assert.throws(() => arg(root, "--id", "other", "--title", "t", "--by", "b", "--replace"), /no songs.other.json/);
+    assert.throws(() => arg(root, "--replace"), /goes with --id/);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
 
 test("the command writes the song file and lists it in index.js once, even when run twice", () => {
   const root = scratchRoot();

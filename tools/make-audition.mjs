@@ -11,6 +11,8 @@
 //   --bpm id=n   render that song at n beats a minute. The page runs the real splitParts and backingLeft on { ...song, bpm: n },
 //                so the tiles are rebuilt by the chart code (its millisecond limits apply), never scaled from the old tiles.
 //   --offset ms  the lead the backing has over the taps (default 120, the floor's setting). 0 puts every tap exactly on its note.
+//   --whole-tune every tune note that did not become a tile for anyone also sounds, as loud as a tapped note and exactly on its own
+//                time (whatever --offset says for the taps). Tiles are unchanged. This is how the game would sound if the whole tune played on time by itself.
 //   --tag name   write <song id>-<name>.mp3 only (the perfect version, no "none" file), so round one's files are never touched.
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,16 +25,18 @@ const only = [];
 const bpmOf = {}; // song id -> bpm to render at
 let OFFSET_MS = 120; // session.js settings.offsetMs: the backing runs this far ahead of the song clock the hits are judged on
 let tag = null;
+let WHOLE_TUNE = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a.startsWith("http")) origin = a;
   else if (a === "--bpm") { const [id, n] = (args[++i] ?? "").split("="); if (!id || !(Number(n) > 0)) throw new Error("--bpm needs <id>=<number>"); bpmOf[id] = Number(n); }
   else if (a === "--offset") { OFFSET_MS = Number(args[++i]); if (!Number.isFinite(OFFSET_MS) || OFFSET_MS < 0) throw new Error("--offset needs a number of ms, 0 or more"); }
+  else if (a === "--whole-tune") WHOLE_TUNE = true;
   else if (a === "--tag") { tag = args[++i]; if (!/^[a-z0-9-]+$/.test(tag ?? "")) throw new Error("--tag needs a name of lower case letters, digits and dashes"); }
   else only.push(a);
 }
-if (!tag && (OFFSET_MS !== 120 || Object.keys(bpmOf).length)) throw new Error("--bpm and --offset need --tag, or they would overwrite round one's files");
+if (!tag && (OFFSET_MS !== 120 || WHOLE_TUNE || Object.keys(bpmOf).length)) throw new Error("--bpm, --offset and --whole-tune need --tag, or they would overwrite round one's files");
 const KINDS = tag ? ["perfect"] : ["perfect", "none"]; // a tagged run writes the perfect version only
 const fileKind = (kind) => (tag ?? kind); // the name part after the song id
 const OUT = "shots/audition/audio";
@@ -48,7 +52,7 @@ try {
   const page = await browser.newPage();
   await page.goto(origin + "/qa/person.jpg"); // any page on the dev server's origin, so the module imports work
 
-  const ids = await page.evaluate(async ({ SR, TAIL_S, SEATS, OFFSET_MS, bpmOf }) => {
+  const ids = await page.evaluate(async ({ SR, TAIL_S, SEATS, OFFSET_MS, bpmOf, WHOLE_TUNE }) => {
     const { createSynth } = await import("/src/game/synth.js");
     const { songs } = await import("/src/songs/index.js");
     const { splitParts } = await import("/src/game/parts.js");
@@ -61,7 +65,7 @@ try {
 
     // One render. The song clock is in ms, as the stage keeps it: 0 is the first beat, the count-in is negative. `t0` is the song
     // clock at the start of the file.
-    async function render(song, parts, kind, t0, endMs, lengthS) {
+    async function render(song, parts, kind, t0, endMs, lengthS, extras) {
       const beatMs = 60000 / song.bpm;
       const ctx = new OfflineAudioContext(2, Math.ceil(lengthS * SR), SR);
       const synth = createSynth({ context: ctx });
@@ -79,6 +83,7 @@ try {
         else if (n.hold) events.push({ at, type: "holdStart", midi: n.midi }, { at: tail - FLICKER_MS, type: "holdEnd", midi: n.midi });
         else events.push({ at, type: "hit", midi: n.midi });
       }
+      for (const n of extras) events.push({ at: n.beat * beatMs, type: "hit", midi: n.midi }); // --whole-tune: the tune notes that are not tiles
       events.sort((a, b) => a.at - b.at);
       const ringing = []; // stop functions of the holds in progress, in order of their holdEnd
       let next = 0;
@@ -136,11 +141,15 @@ try {
         const at = n.beat * beatMs;
         return kind === "none" ? at + GOOD_MS + FRAME_MS : n.hold ? at + n.beats * beatMs - FLICKER_MS : at;
       }))));
+      // --whole-tune: the tune notes that did not become a tile (a tile of the tune has the same beat and pitch), in the perfect version only.
+      const tiled = new Set(parts.flatMap((p) => p.notes.filter((n) => n.bi === undefined).map((n) => n.beat + ":" + n.midi)));
+      const extras = WHOLE_TUNE ? song.notes.filter((n) => !tiled.has(n.beat + ":" + n.midi)) : [];
+      result.extraNotes = extras.length;
       const pcm = {};
       for (const kind of kinds) {
         const endMs = endOf(kind);
         const lengthS = (endMs - t0) / 1000 + TAIL_S;
-        const [L, R] = await render(song, parts, kind, t0, endMs, lengthS);
+        const [L, R] = await render(song, parts, kind, t0, endMs, lengthS, kind === "none" ? [] : extras);
         pcm[kind] = { L, R };
         const musicFrom = (0 * beatMs - t0 - OFFSET_MS) / 1000; // beat 0, where the count-in ends
         const musicTo = (endMs - t0) / 1000;
@@ -179,7 +188,7 @@ try {
       return btoa(bin);
     };
     return songs.map((s) => s.id);
-  }, { SR, TAIL_S, SEATS, OFFSET_MS, bpmOf });
+  }, { SR, TAIL_S, SEATS, OFFSET_MS, bpmOf, WHOLE_TUNE });
 
   const rows = [];
   for (const id of ids.filter((i) => !only.length || only.includes(i))) {
@@ -210,6 +219,7 @@ try {
   if (tag) { // round two: one perfect file per song, shown next to the song's own figures
     console.log(`\nTag "${tag}", offset ${OFFSET_MS} ms. Tiles and tune notes a second: the song's own (first round) -> this clip.`);
     console.log("song                         bpm          tiles        tune notes/s      tiles/s          file s  peak   mp3 peak dB  result");
+    if (WHOLE_TUNE) for (const r of rows) console.log(`  --whole-tune ${r.id}: ${r.extraNotes} tune notes sound as extra notes (of ${r.now.tuneNotes}, ${r.now.tiles} tiles)`);
     for (const r of rows) {
       const p = r.files.perfect;
       const lengthOk = Math.abs(p.seconds - p.expected) < 0.05 && Math.abs(p.mp3Seconds - p.seconds) < 0.15;

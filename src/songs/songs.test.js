@@ -28,9 +28,9 @@ for (const f of files) {
       if (!prev) return;
       assert.ok(n.beat > prev.beat, `note ${i} is not after the note before it`);
       assert.ok(prev.beat + prev.beats <= n.beat, `note ${i - 1} runs into note ${i}`);
-      // 0.3 s, down from 0.4 s (Sun 22 Nov): Nicolo's ear picked faster tempos for the slow songs, and it is the chart builder
-      // (MIN_GAP_MS in game/chart.js) that keeps one player's tiles far enough apart for a foot, whatever the tune does.
-      assert.ok(secondsApart(prev, n) >= 0.3, `notes ${i - 1} and ${i} start only ${secondsApart(prev, n).toFixed(2)} s apart`);
+      // 0.1 s is a sanity floor only (Sun 22 Nov). A song file holds the real tune, close notes and all. Keeping one player's tiles
+      // far enough apart for a foot is the chart builder's job (MIN_GAP_MS in game/chart.js), never the song file's.
+      assert.ok(secondsApart(prev, n) >= 0.1, `notes ${i - 1} and ${i} start only ${secondsApart(prev, n).toFixed(2)} s apart`);
     });
     console.log(`${song.title}: ${songSeconds(song).toFixed(1)} s`);
   });

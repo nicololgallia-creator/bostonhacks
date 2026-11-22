@@ -1,20 +1,18 @@
 // Turn a MIDI file into songs/<id>.json (the Song shape in PLAN.md) and list it in src/songs/index.js.
-//   node tools/midi-to-song.mjs <file.mid> --id <id> --title "<title>" --by "<artist, year>" [--track <n>] [--from <sec>] [--to <sec>]
+//   node tools/midi-to-song.mjs <file.mid> --id <id> --title "<title>" --by "<artist, year>" [--track <n>] [--from <sec>] [--to <sec>] [--replace]
 // With only the file, it prints the tracks and the likeliest melody and writes nothing.
+// The song keeps the whole melody. Keeping one player's tiles far enough apart for a foot is the chart builder's job (MIN_GAP_MS in src/game/chart.js).
+// --replace writes the song again when its id is already in songs/, and keeps its place in src/songs/index.js.
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import tonejs from "@tonejs/midi";
 import { songSeconds } from "../src/game/engine.js";
 
 const { Midi } = tonejs;
-const MIN_GAP_S = 0.4; // same rule as src/songs/songs.test.js
 const GRIDS = [1, 2, 3, 4, 6, 8]; // note starts per quarter note, coarsest first
 const MAX_BYTES = 5_000_000;
-const USAGE = 'Usage: node tools/midi-to-song.mjs <file.mid> --id <id> --title "<title>" --by "<artist, year>" [--track <n>] [--from <sec>] [--to <sec>]';
+const USAGE = 'Usage: node tools/midi-to-song.mjs <file.mid> --id <id> --title "<title>" --by "<artist, year>" [--track <n>] [--from <sec>] [--to <sec>] [--replace]';
 
-const gcd = (a, b) => (b ? gcd(b, a % b) : a);
-// Smaller is more on the beat: 1 for a quarter note start, up to the grid for the finest position.
-const offBeat = (beat, d) => d / gcd(beat, d);
 // Kick for kick and toms, snare for snares and claps, hat for everything else (hats, cymbals, percussion).
 const drumOf = (midi) => (midi <= 36 || [41, 43, 45, 47, 48, 50].includes(midi) ? "kick" : midi <= 40 ? "snare" : "hat");
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
@@ -77,19 +75,14 @@ export function convertMidi(bytes, { id, title, by, track, from = 0, to = Infini
   const beatOf = (n) => Math.round(quarters(n) * d);
   const lengthOf = (n) => Math.max(1, Math.round((n.duration * bpm) / 60));
 
-  // Melody: one note per beat (the highest), then drop the weaker of two notes that start under 0.4 s apart.
+  // Melody: one note per start time (the highest), so the tune stays one line. A note is shortened where the next one starts.
   const top = new Map();
   for (const n of melodyRaw) {
     const b = beatOf(n);
     const have = top.get(b);
     if (!have || n.midi > have.midi) top.set(b, { beat: b, midi: n.midi, length: lengthOf(n) });
   }
-  const kept = [];
-  for (const n of [...top.values()].sort((a, b) => a.beat - b.beat)) {
-    const last = kept.at(-1);
-    if (!last || ((n.beat - last.beat) * 60) / bpm >= MIN_GAP_S) kept.push(n);
-    else if (offBeat(n.beat, d) < offBeat(last.beat, d) || (offBeat(n.beat, d) === offBeat(last.beat, d) && n.length > last.length)) kept[kept.length - 1] = n;
-  }
+  const kept = [...top.values()].sort((a, b) => a.beat - b.beat);
   const lo = Math.min(...kept.map((n) => n.midi));
   const hi = Math.max(...kept.map((n) => n.midi));
   const shift = 12 * Math.round((66 - (lo + hi) / 2) / 12);
@@ -114,7 +107,7 @@ export function convertMidi(bytes, { id, title, by, track, from = 0, to = Infini
   backing.sort((a, b) => a.beat - b.beat);
 
   const song = { id, title, by, bpm, notes, ...(backing.length && { backing }) };
-  return { info, song, dropped: top.size - kept.length };
+  return { info, song };
 }
 
 const obj = (o) => `{${Object.entries(o).map(([k, v]) => `"${k}": ${JSON.stringify(v)}`).join(", ")}}`;
@@ -147,6 +140,11 @@ function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i].replace(/^--/, "");
+    if (rest[i] === "--replace") {
+      opts.replace = true;
+      i--; // a switch with no value
+      continue;
+    }
     if (!["id", "title", "by", "track", "from", "to"].includes(key) || !rest[i].startsWith("--")) throw new Error(`Unknown option ${rest[i]}.\n${USAGE}`);
     if (rest[i + 1] === undefined) throw new Error(`The option --${key} needs a value.`);
     opts[key] = rest[i + 1];
@@ -173,9 +171,11 @@ export function run(argv, root = fileURLToPath(new URL("..", import.meta.url))) 
   if (given.length && given.length < 3) throw new Error(`Give --id, --title and --by together. Missing: ${["id", "title", "by"].filter((k) => !opts[k]).map((k) => `--${k}`).join(", ")}.`);
   if (opts.id && !/^[a-z][a-z0-9-]*$/.test(opts.id)) throw new Error("The --id may only use lowercase letters, numbers and dashes, and must start with a letter.");
   const songPath = `${root}/songs/${opts.id}.json`;
-  if (opts.id && existsSync(songPath)) throw new Error(`The id "${opts.id}" is already used by songs/${opts.id}.json. Pick another --id, or delete that file first.`);
+  if (opts.id && existsSync(songPath) && !opts.replace) throw new Error(`The id "${opts.id}" is already used by songs/${opts.id}.json. Pick another --id, or add --replace to write it again.`);
+  if (opts.replace && !opts.id) throw new Error("--replace goes with --id, --title and --by.");
+  if (opts.replace && !existsSync(songPath)) throw new Error(`--replace needs an existing song, and there is no songs/${opts.id}.json. Leave out --replace to add a new song.`);
 
-  const { info, song, dropped } = convertMidi(readFileSync(file), opts);
+  const { info, song } = convertMidi(readFileSync(file), opts);
   const out = [];
   if (opts.track === undefined) out.push(table(info.tracks), `Melody: ${info.why}. Re-run with --track <n> to pick another.`);
   if (!song) return out.concat("Nothing written. Add --id, --title and --by to write the song.").join("\n");
@@ -184,7 +184,7 @@ export function run(argv, root = fileURLToPath(new URL("..", import.meta.url))) 
   const index = addToIndex(readFileSync(indexPath, "utf8"), song.id);
   writeFileSync(songPath, songToJson(song));
   writeFileSync(indexPath, index);
-  out.push(`Wrote songs/${song.id}.json: ${song.notes.length} melody notes (${dropped} dropped for starting under ${MIN_GAP_S} s after another), ${song.backing?.length ?? 0} backing notes, bpm ${song.bpm}, ${songSeconds(song).toFixed(1)} s. Listed in src/songs/index.js.`);
+  out.push(`Wrote songs/${song.id}.json: ${song.notes.length} melody notes, ${song.backing?.length ?? 0} backing notes, bpm ${song.bpm}, ${songSeconds(song).toFixed(1)} s. Listed in src/songs/index.js.`);
   return out.join("\n");
 }
 
