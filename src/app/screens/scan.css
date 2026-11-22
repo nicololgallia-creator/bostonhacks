@@ -44,3 +44,9 @@
 }
 .code-input:hover { background: var(--c-soft); }
 .code-input:focus-visible { background: var(--paper); }
+
+/* after 12 seconds with nothing read: one small grey line to photograph, and the way to type the code gets louder */
+.scan-debug { text-align: center; font-size: 0.8125rem; font-weight: 700; line-height: 1.4; color: var(--ink-2); }
+.scan-debug[hidden] { display: none; }
+.scan .actions[data-nudge] .done { width: 100%; min-height: 3.25rem; background: var(--paper); color: var(--ink); text-decoration: none; border: var(--stroke) solid var(--ink); border-radius: 2rem; transition: background-color 160ms var(--ease-out); }
+.scan .actions[data-nudge] .done:hover { background: var(--c-soft); }
