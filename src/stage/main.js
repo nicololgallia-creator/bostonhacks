@@ -16,7 +16,7 @@ import { backingLeft } from "../game/chart.js";
 import { createRenderer } from "../game/render.js";
 import { createRenderer as createTileRenderer } from "../game/tiles.js";
 import { songs } from "../songs/index.js";
-import { openLink, joinHref, stageRoom } from "../link.js";
+import { openLink, joinHref, stageRoom, onLaptopNetwork } from "../link.js";
 import { createSession, trainFromAddress, trainQuery } from "./session.js";
 import { listStops } from "../mbta/api.js";
 import { feetBySpot, makeLayout, keptLayout } from "./layout.js"; // keptLayout: wave 9 block "seats"
@@ -117,7 +117,9 @@ setInterval(sendState, 500);
 // the moment it opens. The stage itself runs on localhost, which a phone cannot open, so the server lists the addresses.
 // With a public site address set (VITE_PUBLIC_URL) and the relay connected, the QR code leads to the hosted phone page.
 // Otherwise it holds the laptop's address, which works on the same Wi-Fi with no internet.
-const PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL || "";
+// A floor opened on our own public address (ttiles.us/floor) is its own phone address: no setting is needed there, which
+// matters because the site is also built by Vercel straight from GitHub, where no local setting exists.
+const PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL || (onLaptopNetwork(location.hostname) ? "" : location.origin);
 let lanUrl = null;
 let relayUp = false;
 const usePublic = () => PUBLIC_URL !== "" && relayUp;

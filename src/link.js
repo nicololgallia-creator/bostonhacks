@@ -9,7 +9,7 @@ import { isRoom, makeCode, openRelay, stageRoom } from "./link-relay.js";
 export { stageRoom };
 
 // Hosts that are the laptop or its own network: localhost, *.local, and the private ranges.
-const onLaptopNetwork = (host) =>
+export const onLaptopNetwork = (host) =>
   /^(localhost|\[::1\]|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || host.endsWith(".local");
 
 // Which transports a page opens. ?link=relay or ?link=local forces one. The stage page is the only one that opens both.

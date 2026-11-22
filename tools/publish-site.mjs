@@ -22,8 +22,6 @@ const work = path.resolve(opt("work", path.join(os.tmpdir(), "platform-piano-sit
 const site = path.join(root, ".deploy", "platform-piano");
 const LIVE = "https://ttiles.us/";
 const NOT_PUBLIC = ["seats.html", "track.html", "floor-pilot.html", "review.html", "qa-fixtures"]; // test tools stay on the laptop. The floor page and its pose model are public: the floor runs from our own address, camera and all
-// One address for the floor: /floor opens the stage as a fixture (no setup, the camera picks itself, a Calibrate button in the lobby).
-const VERCEL_JSON = { redirects: [{ source: "/floor", destination: "/stage.html?install=1", permanent: false }] };
 const run = (cmd, cwd = root) => execSync(cmd, { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 
 if (!fs.existsSync(path.join(root, ".git"))) throw new Error("Run this from the project root.");
@@ -53,7 +51,7 @@ fs.mkdirSync(site, { recursive: true });
 for (const name of fs.readdirSync(site)) if (name !== ".vercel") fs.rmSync(path.join(site, name), { recursive: true, force: true });
 fs.cpSync(dist, site, { recursive: true });
 for (const name of NOT_PUBLIC) fs.rmSync(path.join(site, name), { recursive: true, force: true });
-fs.writeFileSync(path.join(site, "vercel.json"), JSON.stringify(VERCEL_JSON, null, 2));
+fs.copyFileSync(path.join(work, "vercel.json"), path.join(site, "vercel.json")); // the /floor shortcut: the same file Vercel reads when it builds from GitHub
 
 if (argv.includes("--dry")) { console.log(`Dry run: stopped before the deploy. The site folder is ${site}`); process.exit(0); }
 

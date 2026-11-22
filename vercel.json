@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/floor", "destination": "/stage.html?install=1", "permanent": false }
+  ]
+}
