@@ -3,17 +3,38 @@
 // Both go through the real src/game/synth.js on an OfflineAudioContext, and the song is split the way the stage splits it
 // (src/stage/main.js backedSong, session.js): Team mode, 2 seats, volume 0.8, lag setting 120 ms. See reports/audition.md.
 //
-//   node tools/make-audition.mjs [http://localhost:5181] [song id ...]     (the vite dev server must be running)
+//   node tools/make-audition.mjs [http://localhost:5181] [song id ...] [--bpm <id>=<number>]... [--offset <ms>] [--tag <name>]
+//   (the vite dev server must be running; point it at a clean copy of src to render from that copy)
 //
 // Writes shots/audition/audio/<song id>-perfect.mp3 and <song id>-none.mp3 (stereo, 44.1 kHz, 128 kb/s) and prints a check table.
+// Round two options (a plain run is unchanged):
+//   --bpm id=n   render that song at n beats a minute. The page runs the real splitParts and backingLeft on { ...song, bpm: n },
+//                so the tiles are rebuilt by the chart code (its millisecond limits apply), never scaled from the old tiles.
+//   --offset ms  the lead the backing has over the taps (default 120, the floor's setting). 0 puts every tap exactly on its note.
+//   --tag name   write <song id>-<name>.mp3 only (the perfect version, no "none" file), so round one's files are never touched.
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { launch } from "./browser.mjs";
 
-const origin = process.argv[2]?.startsWith("http") ? process.argv[2] : "http://localhost:5181";
-const only = process.argv.slice(2).filter((a) => !a.startsWith("http"));
+let origin = "http://localhost:5181";
+const only = [];
+const bpmOf = {}; // song id -> bpm to render at
+let OFFSET_MS = 120; // session.js settings.offsetMs: the backing runs this far ahead of the song clock the hits are judged on
+let tag = null;
+const args = process.argv.slice(2);
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a.startsWith("http")) origin = a;
+  else if (a === "--bpm") { const [id, n] = (args[++i] ?? "").split("="); if (!id || !(Number(n) > 0)) throw new Error("--bpm needs <id>=<number>"); bpmOf[id] = Number(n); }
+  else if (a === "--offset") { OFFSET_MS = Number(args[++i]); if (!Number.isFinite(OFFSET_MS) || OFFSET_MS < 0) throw new Error("--offset needs a number of ms, 0 or more"); }
+  else if (a === "--tag") { tag = args[++i]; if (!/^[a-z0-9-]+$/.test(tag ?? "")) throw new Error("--tag needs a name of lower case letters, digits and dashes"); }
+  else only.push(a);
+}
+if (!tag && (OFFSET_MS !== 120 || Object.keys(bpmOf).length)) throw new Error("--bpm and --offset need --tag, or they would overwrite round one's files");
+const KINDS = tag ? ["perfect"] : ["perfect", "none"]; // a tagged run writes the perfect version only
+const fileKind = (kind) => (tag ?? kind); // the name part after the song id
 const OUT = "shots/audition/audio";
 const SR = 44100;
 const TAIL_S = 2; // the file ends this long after the floor's results screen takes over
@@ -27,14 +48,13 @@ try {
   const page = await browser.newPage();
   await page.goto(origin + "/qa/person.jpg"); // any page on the dev server's origin, so the module imports work
 
-  const ids = await page.evaluate(async ({ SR, TAIL_S, SEATS }) => {
+  const ids = await page.evaluate(async ({ SR, TAIL_S, SEATS, OFFSET_MS, bpmOf }) => {
     const { createSynth } = await import("/src/game/synth.js");
     const { songs } = await import("/src/songs/index.js");
     const { splitParts } = await import("/src/game/parts.js");
     const { backingLeft } = await import("/src/game/chart.js");
     const { songSeconds, GOOD_MS, FLICKER_MS } = await import("/src/game/engine.js");
 
-    const OFFSET_MS = 120; // session.js settings.offsetMs: the backing runs this far ahead of the song clock the hits are judged on
     const VOLUME = 0.8; // session.js settings.volume
     const FRAME_MS = 16; // the floor's frame: a miss is judged on the first frame after GOOD_MS
     const STEP_S = 0.01; // how often the offline clock stops to do what the floor does every frame
@@ -100,21 +120,24 @@ try {
     const peakOf = (L, R) => { let p = 0; for (let i = 0; i < L.length; i++) p = Math.max(p, Math.abs(L[i]), Math.abs(R[i])); return p; };
     let held = null; // the latest render, read back in pieces by readChunk
 
-    window.makeSong = async (id) => {
-      const song = songs.find((s) => s.id === id);
+    window.makeSong = async (id, kinds) => {
+      const own = songs.find((s) => s.id === id);
+      const song = bpmOf[id] ? { ...own, bpm: bpmOf[id] } : own; // the real chart code runs on this, so the tiles follow the new tempo
       const parts = splitParts(song, SEATS, { mode: "team" });
+      const stats = (sg, ps) => ({ bpm: sg.bpm, tiles: ps.reduce((n, p) => n + p.notes.length, 0), tuneNotes: sg.notes.length, notesPerSecond: sg.notes.length / songSeconds(sg), tilesPerSecond: ps.reduce((n, p) => n + p.notes.length, 0) / songSeconds(sg) });
+      const first = stats(own, bpmOf[id] ? splitParts(own, SEATS, { mode: "team" }) : parts);
       const beatMs = 60000 / song.bpm;
       // When the file starts: half a second before the first sound the floor makes (the first count-in click).
       const firstMs = Math.min(...[...song.notes, ...(song.backing ?? [])].map((e) => e.beat * beatMs)) - OFFSET_MS;
       const t0 = firstMs - 500;
-      const result = { id, title: song.title, bpm: song.bpm, songSeconds: songSeconds(song), files: {} };
+      const result = { id, title: song.title, bpm: song.bpm, songSeconds: songSeconds(song), files: {}, first, now: stats(song, parts) };
       // The results screen comes when every seat's part is finished (engine.js `done`): its own end, and its last tile judged.
       const endOf = (kind) => Math.max(...parts.map((p) => Math.max(songSeconds(p) * 1000, ...p.notes.map((n) => {
         const at = n.beat * beatMs;
         return kind === "none" ? at + GOOD_MS + FRAME_MS : n.hold ? at + n.beats * beatMs - FLICKER_MS : at;
       }))));
       const pcm = {};
-      for (const kind of ["perfect", "none"]) {
+      for (const kind of kinds) {
         const endMs = endOf(kind);
         const lengthS = (endMs - t0) / 1000 + TAIL_S;
         const [L, R] = await render(song, parts, kind, t0, endMs, lengthS);
@@ -156,13 +179,13 @@ try {
       return btoa(bin);
     };
     return songs.map((s) => s.id);
-  }, { SR, TAIL_S, SEATS });
+  }, { SR, TAIL_S, SEATS, OFFSET_MS, bpmOf });
 
   const rows = [];
   for (const id of ids.filter((i) => !only.length || only.includes(i))) {
-    const r = await page.evaluate((id) => window.makeSong(id), id);
-    for (const kind of ["perfect", "none"]) {
-      const wav = join(work, `${id}-${kind}.wav`);
+    const r = await page.evaluate((id, kinds) => window.makeSong(id, kinds), id, KINDS);
+    for (const kind of KINDS) {
+      const wav = join(work, `${id}-${fileKind(kind)}.wav`);
       const chunks = [];
       for (let i = 0; ; i++) {
         const b64 = await page.evaluate((kind, i) => window.readChunk(kind, i, 3 * 1024 * 1024), kind, i);
@@ -170,7 +193,7 @@ try {
         chunks.push(Buffer.from(b64, "base64"));
       }
       writeFileSync(wav, Buffer.concat(chunks));
-      const mp3 = join(OUT, `${id}-${kind}.mp3`);
+      const mp3 = join(OUT, `${id}-${fileKind(kind)}.mp3`);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", wav, "-ac", "2", "-ar", "44100", "-codec:a", "libmp3lame", "-b:a", "128k", mp3]);
       rmSync(wav);
       const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "json", mp3]).toString());
@@ -184,21 +207,35 @@ try {
   }
 
   const f = (n, d = 1) => (n === null || !Number.isFinite(n) ? "n/a" : n.toFixed(d));
-  console.log("\nsong                         song s  perfect s  none s  peak perfect  peak none  mp3 peak dB (p/n)  quietest 2 s none dB  tune louder dB  result");
-  for (const r of rows) {
-    const p = r.files.perfect, n = r.files.none;
-    const lengthOk = [p, n].every((x) => Math.abs(x.seconds - x.expected) < 0.05 && Math.abs(x.mp3Seconds - x.seconds) < 0.15);
-    const peakOk = [p, n].every((x) => x.peak <= 0.99 && x.mp3PeakDb <= -0.09);
-    const silentOk = n.quietest2s === null || n.quietest2s > -55; // a 2 s window of no sound at all
-    const louder = p.musicDb - n.musicDb;
-    const loudOk = louder > 0;
-    const ok = lengthOk && peakOk && silentOk && loudOk;
-    if (!ok) failed = true;
-    const why = [!lengthOk && "length", !peakOk && "peak", !silentOk && "silent window", !loudOk && "tune not louder"].filter(Boolean).join(", ");
-    console.log(`${r.id.padEnd(28)} ${f(r.songSeconds).padStart(6)} ${f(p.mp3Seconds).padStart(10)} ${f(n.mp3Seconds).padStart(7)} ${f(p.peak, 3).padStart(13)} ${f(n.peak, 3).padStart(10)} ${(f(p.mp3PeakDb, 2) + "/" + f(n.mp3PeakDb, 2)).padStart(18)} ${f(n.quietest2s).padStart(21)} ${f(louder).padStart(15)}  ${ok ? "ok" : "FAIL " + why}`);
+  if (tag) { // round two: one perfect file per song, shown next to the song's own figures
+    console.log(`\nTag "${tag}", offset ${OFFSET_MS} ms. Tiles and tune notes a second: the song's own (first round) -> this clip.`);
+    console.log("song                         bpm          tiles        tune notes/s      tiles/s          file s  peak   mp3 peak dB  result");
+    for (const r of rows) {
+      const p = r.files.perfect;
+      const lengthOk = Math.abs(p.seconds - p.expected) < 0.05 && Math.abs(p.mp3Seconds - p.seconds) < 0.15;
+      const peakOk = p.peak <= 0.99 && p.mp3PeakDb <= -0.09;
+      if (!(lengthOk && peakOk)) failed = true;
+      const why = [!lengthOk && "length", !peakOk && "peak"].filter(Boolean).join(", ");
+      const pair = (a, b, d = 0) => `${f(a, d)} -> ${f(b, d)}`;
+      console.log(`${r.id.padEnd(28)} ${pair(r.first.bpm, r.now.bpm).padEnd(12)} ${pair(r.first.tiles, r.now.tiles).padEnd(12)} ${pair(r.first.notesPerSecond, r.now.notesPerSecond, 2).padEnd(17)} ${pair(r.first.tilesPerSecond, r.now.tilesPerSecond, 2).padEnd(16)} ${f(p.mp3Seconds).padStart(6)} ${f(p.peak, 3)}  ${f(p.mp3PeakDb, 2).padStart(10)}  ${lengthOk && peakOk ? "ok" : "FAIL " + why}`);
+    }
+  } else {
+    console.log("\nsong                         song s  perfect s  none s  peak perfect  peak none  mp3 peak dB (p/n)  quietest 2 s none dB  tune louder dB  result");
+    for (const r of rows) {
+      const p = r.files.perfect, n = r.files.none;
+      const lengthOk = [p, n].every((x) => Math.abs(x.seconds - x.expected) < 0.05 && Math.abs(x.mp3Seconds - x.seconds) < 0.15);
+      const peakOk = [p, n].every((x) => x.peak <= 0.99 && x.mp3PeakDb <= -0.09);
+      const silentOk = n.quietest2s === null || n.quietest2s > -55; // a 2 s window of no sound at all
+      const louder = p.musicDb - n.musicDb;
+      const loudOk = louder > 0;
+      const ok = lengthOk && peakOk && silentOk && loudOk;
+      if (!ok) failed = true;
+      const why = [!lengthOk && "length", !peakOk && "peak", !silentOk && "silent window", !loudOk && "tune not louder"].filter(Boolean).join(", ");
+      console.log(`${r.id.padEnd(28)} ${f(r.songSeconds).padStart(6)} ${f(p.mp3Seconds).padStart(10)} ${f(n.mp3Seconds).padStart(7)} ${f(p.peak, 3).padStart(13)} ${f(n.peak, 3).padStart(10)} ${(f(p.mp3PeakDb, 2) + "/" + f(n.mp3PeakDb, 2)).padStart(18)} ${f(n.quietest2s).padStart(21)} ${f(louder).padStart(15)}  ${ok ? "ok" : "FAIL " + why}`);
+    }
+    // The list the page shows, in the order of src/songs/index.js (only when every song was rendered).
+    if (!only.length) writeFileSync("shots/audition/songs.json", JSON.stringify(rows.map((r) => ({ id: r.id, title: r.title, seconds: Math.round(r.files.perfect.mp3Seconds) }))));
   }
-  // The list the page shows, in the order of src/songs/index.js (only when every song was rendered).
-  if (!only.length) writeFileSync("shots/audition/songs.json", JSON.stringify(rows.map((r) => ({ id: r.id, title: r.title, seconds: Math.round(r.files.perfect.mp3Seconds) }))));
 } finally {
   await browser.close();
   rmSync(work, { recursive: true, force: true });
