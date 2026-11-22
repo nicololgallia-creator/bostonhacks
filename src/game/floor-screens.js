@@ -317,9 +317,9 @@ export function createScreens(kit) {
         if (train) kit.text(where, rowX + modeW + 28 * U, H * 0.1445, H * 0.052, INK, false, "left", whereW);
       }
 
-      const size = H * 0.52;
+      const size = H * 0.47; // 0.52 reached down into the free seats' "Open" with four seats in the layout
       const gap = H * 0.08;
-      const mh = H * 0.46; // a little smaller than the QR code is tall, so the free seats' "Open" has room under it
+      const mh = H * 0.42; // a little smaller than the QR code is tall, so the free seats' "Open" has room under it
       const mw = mh * MASCOT_ASPECT;
       const left = qr && mascot ? (W - (size + gap + mw)) / 2 : (W - size) / 2;
       const qy = H * 0.195;

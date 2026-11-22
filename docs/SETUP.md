@@ -1,5 +1,7 @@
 # Setting up TTiles
 
+For a fixed install in a space, with one double-click and no keys, read [INSTALL.md](INSTALL.md) instead. This page is the full manual for the team.
+
 Written Sat 21 Nov 2026 from the code and the reports as they are now. Follow it top to bottom. Read it on a phone if you like: every step is one action.
 
 A step marked **(not yet proven on the real floor)** has run only on recordings, stills, a fake camera, or the mouse. If it fails on the real gear, tell the lead what you saw.

@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --test",
+    "floor": ".\\start-ttiles.cmd",
     "postinstall": "node tools/fetch-pose.mjs"
   },
   "dependencies": {

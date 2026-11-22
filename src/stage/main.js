@@ -1,6 +1,7 @@
 // The projected game. Phones join, pick seats and start songs over the link; this page is the one
 // source of truth (session.js), draws the floor and plays the sound.
-// Keys: F fullscreen, P pause or resume, S skip, W skip the warm-up, Esc stop, C setup (also when a phone sends calibrate), G the tracking test (?feet=seats; also ?test=1),
+// Keys: F fullscreen, P pause or resume, S skip, W skip the warm-up, Esc stop, C setup (also when a phone sends calibrate), M place the pads by the camera (lobby), G the tracking test (?feet=seats; also ?test=1),
+// ?install=1 (remembered; ?install=0 turns it off): the floor as a fixture, see src/stage/install.js and docs/INSTALL.md,
 // T turns the picture half way round (the projector and camera face the players; saved, also ?facing=1 or ?facing=0).
 // URL options: ?feet=mouse (the default; the whole picture is the field) ?feet=camera (feet from the camera, after setup) or ?feet=seats (seated play: tap in place, one slice of the picture for each seat),
 // ?demo=1 (a guest in every seat, Space starts the songs), ?autostart=1 (with demo, starts at once).
@@ -24,6 +25,8 @@ import { isFacing, setFacing } from "../facing.js";
 import { openSetup } from "./setup.js";
 import { createFollower } from "./autoplace.js"; // autoplace block below
 import { openTrackTest, sayNeedsSeats } from "./tracktest.js"; // tracktest block below
+import "./install.css"; // install blocks below
+import { installOn, defaultFacing, createStrip, stripFor, cameraOf, RETRY_MS } from "./install.js";
 
 const LAYOUT_KEY = "pp:layout";
 const TRAIN_KEY = "pp:train"; // the train this floor is in: line, direction, stop, car
@@ -34,6 +37,11 @@ const params = new URLSearchParams(location.search);
 const demo = params.get("demo") === "1";
 const canvas = document.createElement("canvas");
 document.getElementById("app").append(canvas);
+// ---- install: ?install=1 makes the stage a fixture (remembered, ?install=0 turns it off): seat tracking, the picture turned for a projector
+// facing the players, the camera chosen by name, no setup unless asked, a strip at the edge when the camera is missing (src/stage/install.js). ----
+const install = installOn(location.search, localStorage);
+if (install) defaultFacing(localStorage);
+// ---- end install ----
 if (params.has("facing")) setFacing(params.get("facing") === "1"); // the gear stands across from the players, facing them
 applyKeystone(canvas); // the saved corners from setup straighten the picture on the floor
 
@@ -43,10 +51,10 @@ applyKeystone(canvas); // the saved corners from setup straighten the picture on
 const feetSources = {
   mouse: () => mouseFeet(canvas),
   camera: () => createTrackedFeet(),
-  seats: () => createSeatSource({ layout: snap.layout, src: params.get("src"), model: params.get("model") ?? "lite", perFrame: +params.get("perframe") || Infinity }),
+  seats: () => createSeatSource({ layout: snap.layout, src: params.get("src"), model: params.get("model") ?? "lite", perFrame: +params.get("perframe") || Infinity, install }),
 };
 function pickFeetSource() {
-  const name = params.get("feet") ?? "mouse";
+  const name = params.get("feet") ?? (install ? "seats" : "mouse"); // install: the real floor, seated play
   if (!feetSources[name]) throw new Error(`There is no feet source called "${name}". Use ?feet=mouse, ?feet=camera or ?feet=seats.`);
   return feetSources[name]();
 }
@@ -62,6 +70,7 @@ const seatsParam = Number(params.get("seats"));
 const session = createSession({ songs, layout: seatsParam >= 1 && seatsParam <= 4 ? makeLayout({ seats: seatsParam }) : keptLayout(saved(LAYOUT_KEY)), train: trainFromAddress(location.search) ?? saved(TRAIN_KEY) });
 const synth = createSynth();
 window.synth = synth; // AUDIO (music): scripted checks read synth.locked() and synth.scheduled() (tools/music-check.mjs)
+if (install) { synth.unlock(); synth.load?.(); } // install: no key press. start-ttiles.cmd starts the browser with its autoplay rule off, so this opens the sound.
 // The falling-tiles floor (first drawn by Zohayb) is the look while a song plays. ?look=pads brings back the old pads.
 const draw = (params.get("look") === "pads" ? createRenderer : createTileRenderer)(canvas);
 let snap = session.snapshot(0); // the latest State: layout, settings, players
@@ -174,15 +183,16 @@ function playSounds(events) {
     else if (e.type === "holdStart") ringing.set(key, synth.noteOn(e.midi));
     else if (e.type === "holdEnd") { ringing.get(key)?.(); ringing.delete(key); }
     else if (e.type === "miss") synth.thud();
-    else if (e.type === "calibrate") setup();
+    else if (e.type === "calibrate" && !install) setup(); // install: setup never opens by itself, and a stranger's phone must not cover the floor
   }
 }
 
 // Setup lines the camera up with the projector. The camera source tells the session what is ready.
 const tellReady = () => { if (feetSource.ready) session.setReady(feetSource.ready()); };
 let setupHandle = null;
-function setup() {
+function setup(first) { // first: "seats" opens on the seats step with "Place by the camera" started (key M, install mode's one-time floor placing)
   setupHandle = openSetup({
+    first,
     stage: { feet: feetSource },
     layout: snap.layout,
     offsetMs: snap.settings.offsetMs,
@@ -298,31 +308,80 @@ window.addEventListener("keydown", (e) => {
   }
   else if (e.code === "Escape") apply({ type: "stop" }, true);
   else if (e.code === "KeyC") setup();
+  else if (e.code === "KeyM" && snap.status === "lobby") setup("seats"); // install: the one-time two-tap "Place by the camera"
   else if (e.code === "Space" && demo) { e.preventDefault(); startDemo(); }
 });
 window.addEventListener("pointerdown", () => { synth.unlock(); synth.load?.(); });
 
+const showFailure = (err) => { document.getElementById("app").innerHTML = `<p class="error">Could not start the game: ${err.message}</p>`; };
+function boot() {
+  if (demo) {
+    snap.layout.spots.forEach((spot) => {
+      apply({ type: "join", clientId: `guest-${spot.id}` });
+      apply({ type: "claim", clientId: `guest-${spot.id}`, spotId: spot.id });
+    });
+    // Guests are not phones, so they say they are still there for themselves.
+    setInterval(() => snap.layout.spots.forEach((spot) => session.apply({ type: "here", clientId: `guest-${spot.id}` }, clock())), 3000);
+    if (params.get("autostart") === "1") startDemo();
+  }
+  findAddress();
+  nameStop();
+  if (params.get("test") === "1") toggleTrackTest();
+  frame();
+}
+
+// ---- install: the strip at the lobby's edge names the camera in use (every mode with a camera) or says what is wrong. ----
+// It is an HTML layer turned with the picture (applyKeystone), like the tracking test's. In install mode keepCamera also starts the camera, and
+// looks again every RETRY_MS while it is missing (or after it was unplugged), so the floor recovers by itself and never sits on a black screen.
+let cameraProblem = null;
+if (!(feetSource instanceof Error)) {
+  const strip = createStrip(applyKeystone);
+  let lobbyAt = 0, wasLobby = false, namedAs = "";
+  setInterval(() => {
+    const lobby = snap.status === "lobby", camera = cameraOf(feetSource), now = performance.now();
+    if ((lobby && !wasLobby) || (camera?.label ?? "") !== namedAs) lobbyAt = now; // the 6 seconds count from the lobby opening, or from the camera being known
+    wasLobby = lobby;
+    namedAs = camera?.label ?? "";
+    strip.show(stripFor({ lobby, problem: cameraProblem, camera, seated: !!feetSource.bySpot, sinceMs: now - lobbyAt }));
+  }, 250);
+}
+async function keepCamera() {
+  for (;;) {
+    try {
+      await feetSource.start();
+      cameraProblem = null;
+      tellReady();
+      const track = feetSource.video?.srcObject?.getVideoTracks?.()[0];
+      if (!track) return; // a file or a recording: nothing to unplug
+      await new Promise((done) => track.addEventListener("ended", done, { once: true }));
+      feetSource.stop();
+      cameraProblem = "The camera was unplugged. Plug it back in.";
+    } catch (err) {
+      cameraProblem = err.message;
+    }
+    await new Promise((done) => setTimeout(done, RETRY_MS));
+  }
+}
+// The seat lines fit themselves: with none saved and following on, look for the people in the lobby until they are found (setup's "Fit to the people").
+let fitting = false;
+function keepFit() {
+  if (fitting || snap.status !== "lobby" || setupHandle || !feetSource.ready().camera || !feetSource.needsFit?.() || !feetSource.following()) return;
+  fitting = true;
+  feetSource.fit().catch(() => {}).finally(() => { fitting = false; });
+}
+// ---- end install ----
+
 if (feetSource instanceof Error) {
   document.getElementById("app").innerHTML = `<p class="error">${feetSource.message}</p>`;
+} else if (install && feetSource.raw) {
+  try { boot(); } catch (err) { showFailure(err); }
+  keepCamera();
+  setInterval(keepFit, 4000);
 } else {
   // A camera that will not start opens setup, whose first step says why. Any other failure stops the stage.
   // Only a source with a camera picture (the camera map, or the seats) opens setup; its first step shows the reason and a camera picker.
   feetSource.start().catch((err) => { if (!feetSource.raw) throw err; setup(); }).then(() => {
     tellReady();
-    if (demo) {
-      snap.layout.spots.forEach((spot) => {
-        apply({ type: "join", clientId: `guest-${spot.id}` });
-        apply({ type: "claim", clientId: `guest-${spot.id}`, spotId: spot.id });
-      });
-      // Guests are not phones, so they say they are still there for themselves.
-      setInterval(() => snap.layout.spots.forEach((spot) => session.apply({ type: "here", clientId: `guest-${spot.id}` }, clock())), 3000);
-      if (params.get("autostart") === "1") startDemo();
-    }
-    findAddress();
-    nameStop();
-    if (params.get("test") === "1") toggleTrackTest();
-    frame();
-  }).catch((err) => {
-    document.getElementById("app").innerHTML = `<p class="error">Could not start the game: ${err.message}</p>`;
-  });
+    boot();
+  }).catch(showFailure);
 }

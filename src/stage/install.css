@@ -1,0 +1,32 @@
+@import "../tokens.css";
+
+/* The camera strip (install.js): one line for whoever runs the floor, at the picture's edge, small and out of the way of the game.
+   The layer fills the window so applyKeystone turns it with the picture, as the tracking test's does. */
+.install-strip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 5;
+  pointer-events: none;
+  font-family: var(--font);
+}
+.install-strip[hidden] { display: none; }
+/* The top corner of the picture: the lobby's headline is centred below it, and the pads are at the players' edge, the bottom. */
+.install-strip p {
+  position: absolute;
+  left: 1.2vh;
+  top: 1.2vh;
+  max-width: 30vw;
+  margin: 0;
+  padding: 0.7vh 1.4vh;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 2.6vh;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: inset 0 0 0 1px var(--surface-3);
+}
+.install-strip.is-alert p { background: var(--warn); color: var(--ink); box-shadow: none; }

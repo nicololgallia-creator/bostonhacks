@@ -6,6 +6,7 @@ import { createSeatFeet, findHips } from "./seats.js";
 import { createTapDetector, calibrationOf } from "./taps.js";
 import { createReplayFeet, loadSeatRecording } from "./seatreplay.js";
 import { EDGES_KEY, boundsFor, slicesKey, writeSaved, assignHips, fitBounds, easeBounds } from "./slices.js";
+import { pickInstallCamera } from "../stage/install.js";
 
 export const CAMERA_KEY = "seats:camera"; // the camera picked on seats.html and in setup
 export const FOLLOW_KEY = "seats:follow"; // false when the operator turned following off
@@ -135,8 +136,12 @@ export function glowFeet(layout, byPad) {
   return layout.spots.flatMap(({ id, rect }) => (byPad[id] ?? []).filter((f) => !f.lifted).map((f) => ({ u: rect.u + f.u * rect.w, v: rect.v + f.v * rect.h })));
 }
 
-function cameraReason(e) {
+// In install mode nobody is at the keyboard and the stage looks again every few seconds by itself, so the sentence says what to do with the gear, not "reload".
+function cameraReason(e, install = false) {
   if (!navigator.mediaDevices) return "The browser only allows the camera on localhost or https. Open this page at http://localhost:5173 on the laptop.";
+  if (install && e.name === "NotAllowedError") return "The browser blocked the camera. Close this window and start TTiles again with start-ttiles.";
+  if (install && e.name === "NotFoundError") return "No camera found. Plug the camera in and turn on webcam mode on it.";
+  if (install && e.name === "NotReadableError") return "Another app is using this camera. Close it (Zoom, the DJI app, another browser tab).";
   if (e.name === "NotAllowedError") return "The browser blocked the camera. Click the camera icon in the address bar, choose Allow, and reload.";
   if (e.name === "NotFoundError") return "No camera found. Plug the camera in and reload. The DJI must be in webcam mode.";
   if (e.name === "NotReadableError") return "Another app is using this camera. Close it (Zoom, the DJI app, another browser tab) and reload.";
@@ -146,7 +151,8 @@ function cameraReason(e) {
 // `src` is a video file to play instead of the camera, or a picture (jpg, png, webp) that stands in for it. With no `video`, one is made and put on the page for good.
 // `replay` is a recording saved by seats.html (the address's ?replay= when not given): it plays in place of the camera, and
 // no video is made. `pad` is the extra picture each seat's model sees on both sides (seats.js).
-export function createSeatSource({ video, src, layout, model = "lite", perFrame = Infinity, pad, replay = new URLSearchParams(globalThis.location?.search).get("replay") }) {
+// `install` is install mode: with no saved camera, or one that is gone, the camera is chosen by name (install.js chooseCamera).
+export function createSeatSource({ video, src, layout, model = "lite", perFrame = Infinity, pad, install = false, replay = new URLSearchParams(globalThis.location?.search).get("replay") }) {
   const still = !!src && /\.(jpe?g|png|webp)(\?|$)/i.test(src);
   if (!video && !replay) {
     video = still ? new Image() : document.createElement("video");
@@ -227,8 +233,15 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
     if (!navigator.mediaDevices) throw new Error(cameraReason({}));
     const get = (id) => navigator.mediaDevices.getUserMedia({ video: { deviceId: id ? { exact: id } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } } });
     try {
+      let id = localStorage.getItem(CAMERA_KEY);
+      if (install) { // install mode: the camera picks itself (stage/install.js); a saved one that is gone is chosen again by the same rule
+        const pick = await pickInstallCamera(id);
+        if (pick.reason === "none") throw new DOMException("No camera", "NotFoundError");
+        id = pick.id;
+        if (pick.remember) localStorage.setItem(CAMERA_KEY, id);
+      }
       try {
-        stream = await get(localStorage.getItem(CAMERA_KEY));
+        stream = await get(id);
       } catch (e) {
         if (e.name !== "OverconstrainedError") throw e;
         stream = await get(); // the picked camera is unplugged: take the first
@@ -236,7 +249,7 @@ export function createSeatSource({ video, src, layout, model = "lite", perFrame 
       video.srcObject = stream;
       await video.play();
     } catch (e) {
-      throw new Error(cameraReason(e));
+      throw new Error(cameraReason(e, install));
     }
   }
 

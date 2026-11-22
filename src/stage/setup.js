@@ -148,7 +148,8 @@ function drawOutline(g, outline, bright, edge) {
   g.fillText("players' edge", mx, my);
 }
 
-export function openSetup({ stage, layout: startLayout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose }) {
+// `first: "seats"` opens on the seats step and, for seated play, starts "Place by the camera" at once (install mode's one key, M).
+export function openSetup({ stage, layout: startLayout, offsetMs, section, setLayout, setOffset, setSection, isPlaying, onClose, first }) {
   if (isOpen) return;
   isOpen = true;
   const seated = !!stage?.feet?.bySpot; // seated play: the picture is cut into one slice for each seat
@@ -190,6 +191,7 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
   let index = 0;
   let cleanup = null;
   let keyHandler = null;
+  let visited = false; // the seats step has been opened once: coming back to it does not start the marks again
 
   const ctx = {
     layer,
@@ -750,6 +752,8 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
       field.append(marks);
       controls.append(placeBtn, againBtn, followBtn, note);
       describe();
+      if (first === "seats" && !visited) startMap(); // opened by the key: the marks are out already, only the two taps are left
+      visited = true;
     }
 
     const g = canvas.getContext("2d");
@@ -1132,6 +1136,6 @@ export function openSetup({ stage, layout: startLayout, offsetMs, section, setLa
     onClose?.(ready);
   }
 
-  go(0);
+  go(first === "seats" ? STEPS.findIndex((st) => st.run === seatsStep) : 0);
   return { close }; // so the stage can close setup when a song starts
 }
