@@ -7,11 +7,14 @@ rem   --autoplay-policy=no-user-gesture-required   sound plays with no key press
 rem   --use-fake-ui-for-media-stream               the camera is allowed with no question. It does not fake the camera.
 rem   --kiosk                                      full screen with no address bar. Alt+F4 closes it.
 rem Closing the window also stops the server this script started. A server that was already running is left alone.
-rem Settings, all optional: TTILES_PORT (default 5173), TTILES_EDGE_ARGS (extra browser flags, for checks).
+rem Settings, all optional: TTILES_PORT (default 5173), TTILES_ROOM (default GREENB22), TTILES_EDGE_ARGS (extra browser flags, for checks).
 rem "start-ttiles.cmd rebuild" throws the built copy away first, after the code changed.
 setlocal
 cd /d "%~dp0"
 if "%TTILES_PORT%"=="" set TTILES_PORT=5173
+rem The room is how a phone on the web finds this floor. A printed poster holds one fixed room, so the floor uses the same
+rem one every time: GREENB22 unless TTILES_ROOM says otherwise (8 characters, A to Z and 2 to 9, without I, O, 0 or 1).
+if "%TTILES_ROOM%"=="" set TTILES_ROOM=GREENB22
 set "URL=http://localhost:%TTILES_PORT%/stage.html"
 set "STARTED="
 
@@ -56,7 +59,7 @@ exit /b 1
 
 :open
 echo Opening the stage full screen. Press Alt+F4 to close it.
-start "" /wait "%EDGE%" --user-data-dir="%~dp0.deploy\kiosk-profile" --kiosk "%URL%?install=1" --edge-kiosk-type=fullscreen --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --no-first-run --no-default-browser-check %TTILES_EDGE_ARGS%
+start "" /wait "%EDGE%" --user-data-dir="%~dp0.deploy\kiosk-profile" --kiosk "%URL%?install=1&room=%TTILES_ROOM%" --edge-kiosk-type=fullscreen --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --no-first-run --no-default-browser-check %TTILES_EDGE_ARGS%
 if defined STARTED (
   for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%TTILES_PORT% .*LISTENING"') do taskkill /f /t /pid %%p >nul 2>&1
   echo TTiles stopped.
