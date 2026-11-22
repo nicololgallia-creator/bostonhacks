@@ -6,6 +6,7 @@ export const HIT_V = 0.75; // where the hit line is
 export const ZONE_V = 0.55; // a lane's square runs from here to v = 1
 export const GOOD_MS = 300; // a foot must arrive within this of a tile's time
 export const PERFECT_MS = 120;
+export const EARLY_MS = 700; // a step that hits nothing, up to this far ahead of a tile's time, was a step at that tile taken too early
 export const FLICKER_MS = 150; // a square counts as empty only after this long with no foot
 export const HOLD_MS = 500; // a note this long or longer is a hold tile (unless the note says `hold` itself: parts from chart.js do)
 export const HOLD_GRACE_MS = 400; // a hold survives this long with its square empty: a seat with one lane reports "lifted" while ANY of its feet is in the air, so the free foot stepping must not end a hold
@@ -82,9 +83,10 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
       const events = [];
       const inLane = (f, lane) => f.v >= ZONE_V && f.v <= 1 && laneAt(f.u) === lane;
       const footIn = (lane) => feet.find((f) => inLane(f, lane));
-      const emit = (type, t, grade) => {
+      // `why` says what went wrong with the timing, for the floor to show: "early" or "late".
+      const emit = (type, t, grade, why) => {
         const f = footIn(t.lane);
-        events.push({ type, lane: t.lane, midi: t.midi, grade, u: f ? f.u : (t.lane + 0.5) / lanes, v: f ? f.v : HIT_V });
+        events.push({ type, lane: t.lane, midi: t.midi, grade, why, u: f ? f.u : (t.lane + 0.5) / lanes, v: f ? f.v : HIT_V });
       };
       // A tile is judged: a hit adds to the combo, a miss resets it.
       const judge = (t, grade, extra = 0) => {
@@ -99,7 +101,9 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
         maxCombo = Math.max(maxCombo, combo);
         score += pointsFor(grade, extra, combo);
       };
-      const miss = (t) => { t.state = "missed"; judge(t, "miss"); emit("miss", t, "miss"); };
+      // A tile whose time ran out was stepped on too late, or not at all. One that was stepped at too early has
+      // already said "early" at that step, so its miss says nothing more.
+      const miss = (t) => { t.state = "missed"; judge(t, "miss"); emit("miss", t, "miss", t.early ? undefined : "late"); };
       const gradeAt = (t) => (Math.abs(nowMs - t.at) <= PERFECT_MS ? "perfect" : "good");
 
       // 1. Steady foot count per lane, and how many feet arrived this frame.
@@ -125,7 +129,13 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
             if (t.lane !== lane || t.state !== "waiting" || Math.abs(nowMs - t.at) > GOOD_MS) continue;
             if (!best || Math.abs(nowMs - t.at) < Math.abs(nowMs - best.at)) best = t;
           }
-          if (!best) continue;
+          if (!best) {
+            // Nothing in reach: when the lane's next tile is close behind, this was a step at it, too early. It scores
+            // nothing and the tile stays waiting, so a second step in time still hits it.
+            const next = tiles.find((t) => t.lane === lane && t.state === "waiting" && t.at - nowMs > GOOD_MS && t.at - nowMs <= EARLY_MS);
+            if (next) { next.early = true; emit("early", next, "miss", "early"); }
+            continue;
+          }
           const grade = gradeAt(best);
           if (best.kind === "tap") {
             best.state = "hit";
@@ -152,7 +162,7 @@ export function createGame({ song, players, lanes = lanesFor(players) }) {
             else if (sq.lastSeen - t.at >= (t.tail - t.at) / 2) judge(t, "good");
             else { t.state = "missed"; judge(t, "miss"); }
             emit("holdEnd", t, t.grade);
-            if (t.state === "missed") emit("miss", t, "miss");
+            if (t.state === "missed") emit("miss", t, "miss", "early"); // the foot left the hold too early
           }
         }
         // 4. A tile nobody reached in time is a miss.

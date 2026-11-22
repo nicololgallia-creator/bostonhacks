@@ -64,14 +64,38 @@ test("a foot arriving within 300 ms of a tap tile is good", () => {
   assert.equal(r.events[0].grade, "good");
 });
 
-test("an arrival with no tile in reach costs nothing, and a tile nobody reaches is a miss", () => {
+test("a step just too early costs nothing and says early, and the tile's miss then says nothing more", () => {
   const game = createGame({ song: tiny, players: 1 });
   const early = game.update(-320, L0);
   assert.equal(early.counts.good + early.counts.perfect + early.counts.miss, 0);
-  assert.equal(early.events.length, 0);
+  assert.deepEqual(early.events.map((e) => [e.type, e.lane, e.why]), [["early", 0, "early"]]);
   const late = game.update(320, L0);
   assert.equal(late.counts.miss, 1);
-  assert.deepEqual(types(late.events), ["miss"]);
+  assert.deepEqual(late.events.map((e) => [e.type, e.why]), [["miss", undefined]]);
+});
+
+test("a tile nobody steps at is a miss that says late", () => {
+  const r = createGame({ song: tiny, players: 1 }).update(320, NONE);
+  assert.deepEqual(r.events.map((e) => [e.type, e.lane, e.why]), [["miss", 0, "late"]]);
+});
+
+test("a step long before any tile says nothing", () => {
+  const game = createGame({ song: tiny, players: 1 });
+  assert.equal(game.update(-720, L0).events.length, 0);
+});
+
+test("after a step too early, a second step in time still hits the tile", () => {
+  const game = createGame({ song: tiny, players: 1 });
+  game.update(-400, L0);
+  const { r, events } = run(game, -380, 0, (t) => (t < 0 ? NONE : L0));
+  assert.equal(r.counts.perfect, 1);
+  assert.deepEqual(types(events), ["hit"]);
+});
+
+test("a hold left too soon is a miss that says early", () => {
+  const game = createGame({ song: holdSong, players: 1 });
+  const { events } = run(game, -20, 900, (t) => (t >= 0 && t < 200 ? L0 : NONE));
+  assert.deepEqual(events.filter((e) => e.type === "miss").map((e) => e.why), ["early"]);
 });
 
 test("a foot in the wrong lane, or above the square, hits nothing", () => {
@@ -154,7 +178,7 @@ test("a hold left early is a miss and resets the combo", () => {
 
 test("a foot standing still on a hold's square does not start it: the hold is missed", () => {
   const game = createGame({ song: holdSong, players: 1 });
-  const { r, events } = run(game, -600, 600, () => L0);
+  const { r, events } = run(game, -1000, 600, () => L0); // on the square long before the tile, so not a step too early
   assert.deepEqual(types(events), ["miss"]);
   assert.equal(r.counts.miss, 1);
   assert.equal(r.tiles.find((x) => x.kind === "hold").state, "missed");

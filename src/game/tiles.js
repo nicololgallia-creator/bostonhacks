@@ -15,7 +15,7 @@ const GAP_V = 0.012; // the field left between two tiles that follow each other 
 const FLASH_MS = 320;
 const WORD_MS = 700;
 const SQUASH_MS = 160;
-const WORDS = ["", "Perfect", "Good", "Miss"];
+const WORDS = ["", "Perfect", "Good", "Late", "Early"];
 const LANES = 64; // per-lane memory: 8 spots by 8 lanes
 const slot = (spotId, lane) => ((spotId & 7) << 3) | (lane & 7);
 
@@ -31,10 +31,10 @@ export function createRenderer(canvas) {
   const hitAt = new Float64Array(LANES).fill(-1e9); // when a lane last scored
   const missAt = new Float64Array(LANES).fill(-1e9);
   const wordAt = new Float64Array(LANES).fill(-1e9);
-  const wordGrade = new Uint8Array(LANES); // 1 perfect, 2 good, 3 miss
+  const wordGrade = new Uint8Array(LANES); // 1 perfect, 2 good, 3 late, 4 early
   const behind = new Float64Array(8); // for each lane of the pad being drawn, the front of the tile drawn before this one
   let ready = false;
-  let wordW = [0, 0, 0, 0];
+  let wordW = WORDS.map(() => 0);
   let prevStatus = null;
   let lastNow = 0;
   let clock = 0; // the game clock: everything on the pads runs on it, and it stands still while paused
@@ -44,10 +44,13 @@ export function createRenderer(canvas) {
   window.addEventListener("resize", () => { kit.resize(); fx.clear(); if (ready) measure(); });
 
   function onEvent(e, now) {
-    if (e.type !== "hit" && e.type !== "holdStart" && e.type !== "miss") return;
+    if (e.type !== "hit" && e.type !== "holdStart" && e.type !== "miss" && e.type !== "early") return;
     const i = slot(e.spotId, e.lane);
+    // A miss or a step too early says why: "Late" or "Early". A miss with no reason was already told at the early step.
+    if (e.why) { wordAt[i] = now; wordGrade[i] = e.why === "early" ? 4 : 3; }
+    if (e.type === "miss") missAt[i] = now;
+    if (e.type === "miss" || e.type === "early") return;
     wordAt[i] = now;
-    if (e.type === "miss") { missAt[i] = now; wordGrade[i] = 3; return; }
     hitAt[i] = now;
     wordGrade[i] = e.grade === "perfect" ? 1 : 2;
   }
@@ -208,7 +211,7 @@ export function createRenderer(canvas) {
         const h = H * 0.08 * k;
         const cy = yLine - H * 0.1 - easeOut(wordAge / 400) * H * 0.03;
         kit.plate(x + laneW / 2 - w / 2, cy - h / 2, w, h, h / 2, g === 1 ? GOLD : g === 2 ? WHITE : th.dull);
-        kit.text(WORDS[g], x + laneW / 2, cy + 2 * U, H * 0.06 * k, g === 3 ? WHITE : INK);
+        kit.text(WORDS[g], x + laneW / 2, cy + 2 * U, H * 0.06 * k, g >= 3 ? WHITE : INK);
       }
       ctx.restore();
     }
