@@ -109,18 +109,19 @@ JavaScript, HTML, CSS, Vite, Node.js, MediaPipe, WebSocket, MQTT, Web Audio API,
 
 ## Spark build-out vision ($1,000)
 
-TODO, for the Spark entry only. Say what the $1,000 adds, and check every price before writing it. Starting ideas:
-- A brighter short-throw projector mounted overhead, so the picture is bigger and players do not shadow their own tiles.
-- A depth camera, so tracking does not depend on light.
-- A permanent install in the Spark! lab with no setup, starting in the lobby screen.
+For the Spark entry only. The hackathon version borrows four things: our laptop, our DJI camera, a projector resting on a table, and a person to line it up. The $1,000 replaces each one, so the floor lives in the lab and starts by itself. One row for each borrowed thing:
 
-Numbers the pitch deck uses (from Nicolo's other Claude session, which says it checked the prices on 21 Nov 2026; the lead's Claude has NOT re-checked them, so open each listing once before this goes on the page):
-| Item | What it adds | Price |
+| Item | What it replaces, and why | Price |
 |---|---|---|
-| 4,000-lumen short-throw projector (ViewSonic PS502X) | A big, bright picture from close up, readable with the lights on | $529.99 at Walmart, budgeted $530 |
-| Depth camera (Intel RealSense D435) | Tracking that does not depend on the room's light | $339.99 at Staples, budgeted $340 |
-| Mount and cables | Fixed overhead, nothing to set up each day | $130 allowance |
-| **Total** | | **$1,000** |
+| BenQ MW560C projector (4,000 ANSI lumens, throw ratio 1.55 to 1.7) | The dim projector on a table. Bright enough for a lit room, and from a 2.7 m ceiling it lights about 1.7 m of floor: one row of chairs. | $499.00 at Staples |
+| Beelink SER5 mini PC (Ryzen 5 5500U, 16 GB, 480 GB) | Our laptop, so the floor runs with nobody's computer left behind. **Not yet tested with the game.** | $379.00 on Amazon (sold by WU Tech-Beelink) |
+| Logitech C920s webcam | Our DJI camera | $74.99 at Best Buy |
+| Mount-It MI-606L ceiling mount | The person who lines it up: mounted once, aligned once | $46.19 at Staples |
+| **Total** | | **$999.18 before tax** |
+
+Where these numbers come from: Nicolo's other Claude session opened each product page in Chrome on the evening of Sat 21 Nov 2026 and sent the prices to the lead's Claude, which did NOT open the pages itself. The pages: staples.com/benq-dlp-business-projector-white-mw560c/product_IM1230C52, amazon.com/dp/B0CRKXMKDT, bestbuy.com/site/-/6321794.p, staples.com/mount-it-projector-ceiling-mount-height-adjustable-universal-stand-mi-606l/product_2632715. Prices move: open each once more on Sunday morning before submitting. (An earlier draft of this table, $530, $340 and $130, came from search summaries nobody had opened. It is gone. The depth camera is dropped: the ordinary camera already catches 66 of 71 real taps on our recording, so it cannot be justified.)
+
+Two things to say honestly on the page: the mini PC has not run the game yet, and the game has not been tried with the C920s (it works with any camera a browser can open, and it has only been run with the DJI).
 
 ## Image gallery
 
