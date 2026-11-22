@@ -308,6 +308,47 @@ Nicolo, 5:25 PM: "1 player gets two note lanes (one per foot), 2 players get 2 n
 |---|---|---|---|---|---|---|---|
 | X5 | lanes (hack-backend) | Nicolo, Claude Code | `src/game/parts.js`, `src/game/parts.test.js`, `src/stage/session.js`, `src/stage/session.test.js`, `src/stage/layout.js`, `src/stage/layout.test.js` | **The new lane rule.** Build the four points above exactly, in pure logic, with a test for each: lanes in a pad for 0, 1, 2, 3 and 4 taken seats; `splitParts` for 1 to 4 seats over every real song (every note on exactly one seat, every seat within two notes of the others, `lane` 0 for all seats when two or more play, lanes 0 and 1 for a lone seat); the session giving each engine the right lane count at the start of a song and holding it for that song even when a seat is released part way; `layout.lanes` in the State following the seats taken in the lobby. Update every test that assumed 2 lanes a pad. Print the notes for each seat for 2, 3 and 4 seats on every real song. List under "Needs from others" every place outside your files that assumes 2 lanes a pad or reads a note's `lane` as 0 or 1 (`src/game/render.js`, `src/phone/`, `src/track/`). | `node --test src/game/parts.test.js src/stage/session.test.js src/stage/layout.test.js src/game/engine.test.js` passes and prints the table. `stage.html?demo=1&feet=mouse&autostart=1` shows three pads of one lane each with tiles on all three, and no console errors. Build passes from PowerShell. | 30 min | ready |
 
+## Wave 8 (Sat 6:00 to 7:10 PM): the real floor, the web, and where things stand
+
+This section overrides every earlier wave. Read it first if you are a new session.
+
+**What the first run on the real floor taught (Nicolo, 6:25 PM):** the projector and the camera stand across the aisle FACING the players. The picture turns half way round and the seats mirror. One saved switch: `src/facing.js`, key T on the stage, `?facing=1`. Tracking "moves pretty slowly" and "some [taps] go off when they're not supposed to": both open. The guided test below is how we get numbers.
+
+**Live addresses**
+- Public phone page: https://platform-piano.vercel.app (Vercel project `platform-piano`, this event only). Publish with `node tools/publish-site.mjs` from PowerShell: it builds the last commit, never the working files.
+- Demo copy on the laptop, built from a commit: http://localhost:4174. To refresh it, run the publish script with `--work <the folder that copy is served from>` (the scratchpad `deploy-src` folder in the session that started it), then restart that preview if `server/` changed.
+- Builders check on http://localhost:4173 (the working files, rebuilt by whoever needs it). Dev server: 5173.
+- `.env.local` holds `VITE_PUBLIC_URL`, so the stage's QR code holds the public address once the relay connects, else the laptop's address.
+
+**Done in this wave (each has a report in `reports/`)**
+
+| Card | What | Proof |
+|---|---|---|
+| taps-tune, taps-feet | Resting feet are not taps; each foot of a seat tracked on its own | `qa/seats/real-two-1.json`: 0 at rest, 29 of 31 and 37 of 40 caught |
+| floor-real | Zohayb's falling tiles in the team look, footprints foot zone, lobby, results board | screenshots opened by the lead |
+| seat-setup | Six setup steps on the stage for seated play (key C) | scripted runs |
+| phone-main | The new phone app, `src/app/`, replaces `src/phone/` and `src/pilot/` | a real round trip |
+| autofit | Seat lines in the camera fit themselves to people and follow | three test pictures |
+| relay | Internet relay (public MQTT, room code in the QR link) beside the local link | a hosted phone took a seat on the laptop's stage |
+| autoplace | Pads place themselves at the feet after a two-tap calibration (setup step 3) | test pictures only |
+| e2e-docs | `node qa/e2e/demo-path.mjs`, 8 steps; `docs/SETUP.md` and `docs/HOW-IT-WORKS.md` rewritten | 8 of 8 on a private copy |
+| app-icon | The conductor is the web app icon and manifest | live |
+| lead | A locked phone keeps its seats during a song and 30 s after; fonts load in the build; QR port fix; the lobby headline bobs with the mascot | tests, measured |
+
+**Running at 7:10 PM**
+
+| Card | Builder | Files | What |
+|---|---|---|---|
+| phone-end | hack-frontend | `src/app/` | Leaderboard, share image, play again |
+| tracktest | hack-backend | `src/stage/tracktest*.js`, `qa/seats/analyze-test.mjs` | Key G on the stage: a guided 90 s test with a metronome that records feet, taps and the camera video, and scores false taps, caught taps and delay |
+| review | hack-frontend | `review.html`, `src/review/` | The side-by-side page: camera video beside each foot's trace, taps marked right or wrong, N jumps to the next false tap |
+
+**Not proven on the real floor:** the half turn and mirror, autofit and autoplace with real people, real taps on real tiles after the two-feet fix, the lag feel, a real phone on mobile data, the share sheet.
+
+**Open, needs a person:** run the guided test (key G) and hand over the two files; power for the projector on the T; the MBTA tripod rule; songs by ear; the app name (GoDaddy prize, costs money: needs Nicolo's number); the Devpost draft with all four members. Zohayb's cards are GitHub issue #6 (poster, songs by ear, three answers).
+
+**Rules that bit us today:** never hand Nicolo a copy built from working files while builders are editing (use the commit-built copy); restart a server after changing `server/`; one stage tab per server (the local link has no rooms).
+
 ## Cards, wave 1
 
 | id | owner | runs on (person, tool) | files it may touch | build | done-check | box | status |
