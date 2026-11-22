@@ -3,6 +3,9 @@ Source: Mutopia Project, "Greensleeves" (Traditional), piece 1265, https://www.m
 File: https://www.mutopiaproject.org/ftp/Traditional/GreensleevesAcc/GreensleevesAcc.mid
 Licence: Public Domain (as listed on the Mutopia page, checked 2026-11-21).
 
+The four files below are no longer in this repository (removed Sun 22 Nov 2026, when it went public): they are user-made
+transcriptions of copyrighted songs with no licence stated. To re-import one, download it again from its source into this folder.
+
 sweet-caroline.mid
 Source: BitMidi, "Neil Diamond - Sweet Caroline.mid", https://bitmidi.com/neil-diamond-sweet-caroline-mid
 File: https://bitmidi.com/uploads/79665.mid
