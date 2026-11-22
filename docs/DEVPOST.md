@@ -48,7 +48,7 @@ Everything that goes on the Devpost page, in one place. Fill in each `TODO`, the
   - Creativity, the "Spark" factor: people who try it want to bring someone over to see it.
   - Technical execution: usable right away, with no setup, instructions, or extra development.
   - Build-out vision: a clear, realistic idea of what the $1,000 equipment budget adds. Draft below.
-  - Facts from the organisers' own doc, "Hack Our Space! Prize 2026-2027" (read in full by the lead's Claude on Sat 21 Nov, 9:55 PM: https://docs.google.com/document/d/1-kdotQLWTW1eAzaz2IL3RyrYiG09FCKZ8zkaTYMAANA):
+  - Facts from the organisers' own doc, "Hack Our Space! Prize 2026-2027" (read in full by the lead's Claude on Sat 21 Nov, about 9:25 PM: https://docs.google.com/document/d/1-kdotQLWTW1eAzaz2IL3RyrYiG09FCKZ8zkaTYMAANA):
     - The prize: "$500 (a Visa gift card, awarded after the event)", plus "automatic entry into the Spark! Innovation Program, track of their choice, and an equipment budget of up to $1,000 to fully build out the project."
     - The bar: "It doesn't need to be polished, but it does need to be a working prototype that we could install in our space right away."
     - **Who may enter: "this challenge is now open to non-BU students with the requirement that projects are a full handoff so we can install them immediately in our space."** Nicolo is at Bentley, so this applies to us: the entry needs a handoff a stranger can install (see docs/SETUP.md), and the floor must start with no setup.
