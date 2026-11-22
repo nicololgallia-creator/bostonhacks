@@ -21,7 +21,7 @@ const root = process.cwd();
 const work = path.resolve(opt("work", path.join(os.tmpdir(), "platform-piano-site")));
 const site = path.join(root, ".deploy", "platform-piano");
 const LIVE = "https://platform-piano.vercel.app/";
-const NOT_PUBLIC = ["stage.html", "seats.html", "track.html", "floor-pilot.html", "mediapipe", "qa-fixtures"]; // the floor and setup stay on the laptop
+const NOT_PUBLIC = ["stage.html", "seats.html", "track.html", "floor-pilot.html", "review.html", "mediapipe", "qa-fixtures"]; // the floor, setup and test tools stay on the laptop; the poster page is public
 const run = (cmd, cwd = root) => execSync(cmd, { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 
 if (!fs.existsSync(path.join(root, ".git"))) throw new Error("Run this from the project root.");
