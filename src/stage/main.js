@@ -82,6 +82,7 @@ let snap = session.snapshot(0); // the latest State: layout, settings, players
 let appliedVolume = null;
 const ringing = new Map(); // "spotId:lane" -> the function that stops that held note
 let qr = null;
+let room = null; // the room code the lobby shows beside the QR code, for a phone that cannot scan: only while the relay can reach this floor
 let qrNote = ["Looking for the network..."];
 
 // The session's clock runs offsetMs behind the wall clock, so a foot the camera saw late still lands on its tile.
@@ -131,6 +132,7 @@ const joinAddress = () => joinBase({ hostname: location.hostname, envUrl: import
 function drawQr() {
   const href = joinHref(joinAddress(), stageRoom(), trainQuery(snap.train));
   qr = createQr(href, { errorCorrectionLevel: "M" }).modules;
+  room = relayUp ? stageRoom() : null; // a typed code reaches the floor through the relay only
   canvas.dataset.joinUrl = href; // for checks: the address the QR code holds
 }
 async function findAddress() {
@@ -288,6 +290,7 @@ function frame() {
     feet: fieldFeet,
     events,
     qr,
+    room,
     qrNote,
   });
   requestAnimationFrame(frame);

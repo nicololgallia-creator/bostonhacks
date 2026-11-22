@@ -299,7 +299,7 @@ export function createScreens(kit) {
     // Every seat's platform is drawn where its pad is, with its name plate: coloured when someone has taken it.
     lobby(th, view, now) {
       const { W, H, U } = kit;
-      const { layout, players, train, qr, qrNote } = view;
+      const { layout, players, train, qr, qrNote, room } = view;
       // One gentle bob for everything that moves in the lobby, so the headline and the mascot move as one. The headline
       // used to pulse in size instead: text sizes step in whole pixels, so it jerked at its own pace beside the mascot.
       const bob = Math.sin(now * 0.003);
@@ -319,9 +319,15 @@ export function createScreens(kit) {
 
       const size = H * 0.47; // 0.52 reached down into the free seats' "Open" with four seats in the layout
       const gap = H * 0.08;
-      const mh = H * 0.42; // a little smaller than the QR code is tall, so the free seats' "Open" has room under it
+      // The room code, for a phone that cannot scan (the phone asks for "the 8 letters and numbers shown on the floor"). It is
+      // written in two halves so it is easy to read out, and sits under the mascot, level with the QR code's foot.
+      const code = qr && room ? `${room.slice(0, 4)} ${room.slice(4)}` : "";
+      const codeW = code ? kit.width(code, H * 0.058) + 44 * U : 0;
+      const mh = H * (code ? 0.32 : 0.42); // a little smaller than the QR code is tall, so the free seats' "Open" has room under it
       const mw = mh * MASCOT_ASPECT;
-      const left = qr && mascot ? (W - (size + gap + mw)) / 2 : (W - size) / 2;
+      const side = qr ? Math.max(mascot ? mw : 0, codeW) : 0; // the column beside the QR code: the mascot, and the room code under it
+      const left = side ? (W - (size + gap + side)) / 2 : (W - size) / 2;
+      const sx = left + size + gap + side / 2;
       const qy = H * 0.195;
       if (qr) {
         kit.plate(left - 6 * U, qy - 6 * U, size + 12 * U, size + 12 * U, 22 * U, WHITE);
@@ -334,7 +340,14 @@ export function createScreens(kit) {
       } else {
         for (let i = 0; i < qrNote.length; i++) kit.text(qrNote[i], W / 2, H * (0.33 + i * 0.1), H * 0.07, INK, true, "center", W * 0.9);
       }
-      if (qr && mascot) ctx.drawImage(mascotCanvas(mh), left + size + gap, qy + (size - mh) / 2 + bob * H * 0.01, mw, mh);
+      if (qr && mascot) ctx.drawImage(mascotCanvas(mh), sx - mw / 2, (code ? qy : qy + (size - mh) / 2) + bob * H * 0.01, mw, mh);
+      if (code) {
+        const ph = H * 0.08;
+        const py = qy + size - ph;
+        kit.text("Or type the code", sx, py - H * 0.034, H * 0.04, INK);
+        kit.plate(sx - codeW / 2, py, codeW, ph, ph / 2, WHITE);
+        kit.text(code, sx, py + ph / 2 + 2 * U, H * 0.058, INK);
+      }
 
       for (let i = 0; i < layout.spots.length; i++) {
         const spot = layout.spots[i];
