@@ -1,6 +1,6 @@
 # How TTiles works
 
-Written Sat 21 Nov 2026 from the code and the reports as they are now. `PLAN.md` holds the cards that built it, and `docs/SETUP.md` says how to set it up.
+Written Sat 21 Nov 2026 from the code as it is now. `docs/SETUP.md` says how to set it up.
 
 ## What it is
 

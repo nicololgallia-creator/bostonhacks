@@ -15,3 +15,16 @@ notes/
 # Pose model and runtime, fetched by npm install
 public/mediapipe/
 .deploy/
+
+# Working files: the team's plan, rules, reports and agent definitions stay on our machines
+AGENTS.md
+PLAN.md
+CLAUDE.md
+DESIGN.md
+research.md
+reports/
+.claude/
+.agents/
+docs/DEVPOST.md
+docs/PITCH.md
+docs/DEMO-VIDEO-SCRIPT.md
