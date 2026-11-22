@@ -2,7 +2,7 @@
   "id": "london-bridge",
   "title": "London Bridge Is Falling Down",
   "by": "Traditional English nursery rhyme, about 1744",
-  "bpm": 130,
+  "bpm": 170,
   "notes": [
     {"beat": 0, "midi": 67, "beats": 3}, {"beat": 3, "midi": 69, "beats": 1}, {"beat": 4, "midi": 67, "beats": 2}, {"beat": 6, "midi": 65, "beats": 2},
     {"beat": 8, "midi": 64, "beats": 2}, {"beat": 10, "midi": 65, "beats": 2}, {"beat": 12, "midi": 67, "beats": 4}, {"beat": 16, "midi": 62, "beats": 2},
