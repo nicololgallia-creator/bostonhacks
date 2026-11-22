@@ -21,13 +21,17 @@ const MAX_TEXT = 4096; // the same cap the local server puts on a message
 const ROOM_KEY = "pp:room";
 let remembered = null;
 // The stage keeps its room, so a reloaded stage is still the one the phones scanned.
-export function stageRoom(store = globalThis.localStorage) {
+// A printed poster holds one fixed room for its car, so the stage can be told to use that room: ?room=XXXXXXXX on the
+// stage page sets and saves it. A value that is not a room code is ignored.
+export function stageRoom(store = globalThis.localStorage, search = globalThis.location?.search ?? "") {
+  const asked = new URLSearchParams(search).get("room")?.toUpperCase();
   try {
+    if (isRoom(asked)) store.setItem(ROOM_KEY, asked);
     let room = store.getItem(ROOM_KEY);
     if (!isRoom(room)) store.setItem(ROOM_KEY, (room = makeRoom()));
     return room;
   } catch { // storage blocked: the room lasts as long as this page
-    return (remembered ??= makeRoom());
+    return (remembered ??= isRoom(asked) ? asked : makeRoom());
   }
 }
 

@@ -42,3 +42,12 @@ test("blocked storage still gives a room", () => {
   assert.ok(isRoom(room));
   assert.equal(stageRoom(store), room);
 });
+
+test("the stage takes a fixed room from its address (a printed poster holds one), saves it, and ignores a bad one", () => {
+  const data = new Map();
+  const store = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, String(v)) };
+  assert.equal(stageRoom(store, "?room=greenb22"), "GREENB22"); // upper case is the saved form
+  assert.equal(stageRoom(store, ""), "GREENB22"); // kept after the address loses it
+  assert.equal(stageRoom(store, "?room=nope"), "GREENB22"); // not a room code: ignored
+  assert.equal(stageRoom(store, "?room=O0O0O0O0"), "GREENB22"); // letters that are not in the alphabet: ignored
+});
